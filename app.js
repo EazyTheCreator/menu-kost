@@ -683,22 +683,29 @@
         '<span class="cmp-note">Pagu ' + rp(bg.pagu) + ', sudah dicatat ' + rp(bg.terpakai) + (rec ? ' (termasuk belanja minggu ini)' : ' · setelah belanja ini <strong>' + rp(after) + '</strong>') + '</span></div>';
       html += '<details class="guide inner"><summary>Rincian amplop yang dihitung</summary><div class="guide-body"><p class="fhint">Makan di luar, jajan, dan gas tidak dihitung sebagai belanja bahan secara bawaan. Ubah bila perlu.</p><ul class="count-list">' +
         bg.items.map(x => '<li><span>' + esc(x.n) + ' <small>' + rp(x.pagu) + '</small></span><button type="button" class="switch" role="switch" aria-checked="' + x.on + '" data-n="' + esc(x.n) + '" aria-label="Hitung ' + esc(x.n) + '"><span></span></button></li>').join('') +
-        '</ul><button type="button" class="link" id="useManual">Pakai anggaran manual saja</button></div></details>';
+        '</ul><div class="row-actions">' + (Object.keys(S.set.hitung).length ? '<button type="button" class="link" id="resetHitung">Kembalikan pilihan bawaan</button>' : '') +
+        '<button type="button" class="link" id="useManual">Pakai anggaran manual saja</button></div></div></details>';
     } else {
       if (S.set.sumber === 'manual' && a && !a.belumIsi) html += '<p class="src off"><i class="dot"></i><span>Memakai anggaran manual. <button type="button" class="link" id="useAuto">Pakai data Amplop Gajian</button></span></p>';
       else if (a && a.belumIsi) html += '<p class="src old"><i class="dot"></i><span>Amplop Gajian terhubung, tetapi gaji ' + BULAN[Number(a.bulan.split('-')[1]) - 1] + ' belum diisi di sana.</span></p>';
       else html += '<p class="src off"><i class="dot"></i><span>Belum terhubung dengan Amplop Gajian. Buka <a href="../amplop-gajian/">Amplop Gajian</a> sekali di peramban ini agar amplop Dapur &amp; makan terbaca otomatis, atau isi anggaran di bawah.</span></p>';
       html += '<div class="field"><label for="manualBudget">Anggaran belanja bahan masak per bulan</label><div class="money"><span>Rp</span><input id="manualBudget" inputmode="numeric" autocomplete="off" placeholder="0" value="' + (S.set.manual ? fmt(S.set.manual) : '') + '"></div></div>';
+      html += '<button type="button" class="link" id="clearManual"' + (S.set.manual > 0 ? '' : ' hidden') + '>Hapus anggaran manual</button>';
       html += '<div id="manualCmp">' + weekCmp(sh, bg) + '</div>';
     }
     card.innerHTML = html;
     const mi = $('#manualBudget');
-    if (mi) bindMoney(mi, (v) => { S.set.manual = v; save(); const s2 = shopping(); $('#manualCmp').innerHTML = weekCmp(s2, budget()); renderSummary(s2); });
+    if (mi) bindMoney(mi, (v) => { S.set.manual = v; save(); const s2 = shopping(); $('#manualCmp').innerHTML = weekCmp(s2, budget()); $('#clearManual').hidden = !v; renderSummary(s2); });
   }
   $('#budgetCard').addEventListener('click', (e) => {
     const sw = e.target.closest('.switch[data-n]');
     if (sw) { const n = sw.dataset.n; S.set.hitung[n] = sw.getAttribute('aria-checked') !== 'true'; save(); renderBudget(shopping()); const d = $('#budgetCard details'); if (d) d.open = true; renderSummary(); return; }
     if (e.target.id === 'useManual') { S.set.sumber = 'manual'; save(); renderBudget(shopping()); renderSummary(); }
+    if (e.target.id === 'resetHitung') { S.set.hitung = {}; save(); renderBudget(shopping()); const d = $('#budgetCard details'); if (d) d.open = true; renderSummary(); toast('Rincian yang dihitung dikembalikan ke pilihan bawaan.'); }
+    if (e.target.id === 'clearManual') {
+      if (!armed(e.target, 'Ketuk lagi untuk menghapus')) return;
+      S.set.manual = 0; save(); renderBudget(shopping()); renderSummary(); toast('Anggaran manual dihapus.');
+    }
     if (e.target.id === 'useAuto') { S.set.sumber = 'auto'; save(); renderBudget(shopping()); renderSummary(); }
   });
 
@@ -862,11 +869,22 @@
   });
 
   /* ---------- Selesai belanja: catat ke Amplop Gajian ---------- */
-  const CONFIRM_KEY = 'menu-kost-dicatat';   // ditulis Amplop Gajian setelah pengguna menekan Catat
-  function recorded(k){
-    try { const o = JSON.parse(localStorage.getItem(CONFIRM_KEY) || '{}') || {}; const r = o[k]; return r && r.amt > 0 ? r : null; } catch (e) { return null; }
-  }
+  // Status "sudah dicatat" dibaca langsung dari catatan pengeluaran di Amplop Gajian (kunci amplop-gajian-menu),
+  // sehingga catatan yang dihapus atau diubah di sana langsung ikut tercermin di sini.
+  const MENU_LIST_KEY = 'amplop-gajian-menu';
+  const CONFIRM_KEY = MENU_LIST_KEY;
+  try { localStorage.removeItem('menu-kost-dicatat'); } catch (e) {}   // tanda versi lama yang tidak tersinkron
   const ketOf = (k) => 'Belanja mingguan ' + weekLabel(k, true) + ' (Menu Masak)';
+  function recorded(k){
+    try {
+      const o = JSON.parse(localStorage.getItem(MENU_LIST_KEY) || 'null');
+      if (!o || !Array.isArray(o.catatan)) return null;
+      const xs = o.catatan.filter(x => x.ref === k || (!x.ref && x.ket === ketOf(k)));
+      if (!xs.length) return null;
+      const amt = xs.reduce((a, x) => a + (Number(x.amt) || 0), 0);
+      return amt > 0 ? { amt, n: xs.length, date: xs.map(x => x.date).sort().pop() } : null;
+    } catch (e) { return null; }
+  }
   function cartTotal(sh){
     const inCart = sh.buy.filter(x => x.bought);
     return inCart.length ? inCart.reduce((s, x) => s + x.cost, 0) + sh.extra.reduce((s, x) => s + x.h, 0) : sh.pay;
@@ -881,7 +899,8 @@
     if (rec) {
       const d = rec.date ? rec.date.split('-').reverse().join('/') : '';
       st.className = 'done-status ok';
-      st.innerHTML = 'Sudah dicatat di Amplop Gajian: <b>' + rp(rec.amt) + '</b>' + (d ? ' pada ' + d : '') + '.';
+      st.innerHTML = 'Sudah dicatat di Amplop Gajian: <b>' + rp(rec.amt) + '</b>' + (d ? ' pada ' + d : '') + (rec.n > 1 ? ' (' + rec.n + ' catatan)' : '') + '. ' +
+        '<button type="button" class="link" id="fixRecord">Ubah atau hapus di Amplop Gajian</button>';
       $('#toAmplop').textContent = 'Catat lagi ke Amplop Gajian';
     } else {
       st.className = 'done-status';
@@ -889,9 +908,12 @@
       $('#toAmplop').textContent = 'Catat ke Amplop Gajian';
     }
     const est = sh.pay, paid = digits(inp.value);
+    $('#paidReset').hidden = !(w && w.bayar);
     $('#paidDiff').textContent = paid && paid !== est ? 'Perkiraan aplikasi ' + rp(est) + ' · selisih ' + (paid > est ? '+' : '−') + rp(Math.abs(paid - est)) + '. Perbarui harga di daftar agar perkiraan berikutnya lebih tepat.' : '';
   }
   bindMoney($('#paidIn'), (v) => { const w = W(); w.bayar = v; save(); renderDone(shopping()); });
+  $('#paidReset').addEventListener('click', () => { const w = W(); w.bayar = 0; save(); renderDone(shopping()); toast('Total dibayar dikembalikan ke perkiraan.'); });
+  $('#doneCard').addEventListener('click', (e) => { if (e.target.id === 'fixRecord') { writeNow(); location.href = '../amplop-gajian/#riwayat'; } });
   $('#toAmplop').addEventListener('click', () => {
     const amt = digits($('#paidIn').value);
     if (!amt) { toast('Isi total yang dibayar lebih dulu.'); $('#paidIn').focus(); return; }

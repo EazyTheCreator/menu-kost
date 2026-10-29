@@ -25,7 +25,7 @@ Harga awal dibulatkan dari harga pasar tradisional akhir Oktober 2026 (SP2KP Kem
 
 ## Keterhubungan dengan Amplop Gajian
 
-Kedua aplikasi berada di origin yang sama (`eazythecreator.github.io`). Amplop Gajian menulis ringkasan amplop dapur bulan berjalan ke kunci `amplop-gajian-dapur` di penyimpanan lokal, dan aplikasi ini membacanya. Untuk mencatat belanja, aplikasi ini membuka `../amplop-gajian/#catat?jumlah=…&ket=…&ref=…`; Amplop Gajian mengisi formulirnya, menunggu pengguna menekan *Catat pengeluaran*, lalu menulis konfirmasi ke kunci `menu-kost-dicatat`. Tidak ada data yang dikirim ke server. Di iPhone, aplikasi yang dipasang ke layar utama memiliki penyimpanan masing-masing, sehingga keterhubungan hanya berlaku bila keduanya dibuka di Safari.
+Kedua aplikasi berada di origin yang sama (`eazythecreator.github.io`). Amplop Gajian menulis ringkasan amplop dapur bulan berjalan ke kunci `amplop-gajian-dapur` di penyimpanan lokal, dan aplikasi ini membacanya. Untuk mencatat belanja, aplikasi ini membuka `../amplop-gajian/#catat?jumlah=…&ket=…&ref=…`; Amplop Gajian mengisi formulirnya dan menunggu pengguna menekan *Catat pengeluaran*. Catatan tersebut ditautkan ke minggunya, dan Amplop Gajian menerbitkan daftar catatan dari Menu Masak ke kunci `amplop-gajian-menu`; status "sudah dicatat" dibaca dari daftar ini, sehingga catatan yang diubah atau dihapus di Amplop Gajian langsung tercermin. Tidak ada data yang dikirim ke server. Di iPhone, aplikasi yang dipasang ke layar utama memiliki penyimpanan masing-masing, sehingga keterhubungan hanya berlaku bila keduanya dibuka di Safari.
 
 ## Struktur
 

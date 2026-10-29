@@ -157,9 +157,9 @@
 
     <section class="card done" id="doneCard" aria-labelledby="doneTitle" hidden>
       <h2 id="doneTitle">Selesai belanja?</h2>
-      <p class="fhint">Isi total yang benar-benar dibayar, lalu catat ke amplop Dapur &amp; makan. Amplop Gajian akan terbuka dengan nominal dan keterangan sudah terisi; Anda tinggal memeriksa lalu menekan <em>Catat pengeluaran</em>.</p>
+      <p class="fhint">Isi total yang benar-benar dibayar, lalu catat ke amplop Dapur &amp; makan. Amplop Gajian akan terbuka dengan nominal dan keterangan sudah terisi; Anda tinggal memeriksa lalu menekan <em>Catat pengeluaran</em>. Bila salah catat, ubah atau hapus catatannya di Amplop Gajian; status di sini ikut menyesuaikan.</p>
       <div class="field">
-        <label for="paidIn">Total dibayar</label>
+        <div class="lbl-row"><label for="paidIn">Total dibayar</label><button type="button" class="link" id="paidReset" hidden>Kembalikan ke perkiraan</button></div>
         <div class="money big"><span>Rp</span><input id="paidIn" inputmode="numeric" autocomplete="off" placeholder="0"></div>
         <small class="fhint" id="paidDiff"></small>
       </div>

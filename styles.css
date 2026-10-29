@@ -455,3 +455,4 @@ dialog.sheet::backdrop{background:rgba(20,12,50,.45);backdrop-filter:blur(3px);a
   .tabs button{font-size:.84rem}
 }
 .slot,.sitem,.pitem,.rcard,.wchips button{-webkit-tap-highlight-color:transparent}
+.ring-txt b{font-size:1.05rem;letter-spacing:-.02em}

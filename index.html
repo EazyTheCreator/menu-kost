@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Rencanakan menu masak seminggu, susun daftar belanja otomatis, dan bandingkan dengan anggaran dapur. Data tersimpan di perangkat Anda.">
+<meta name="theme-color" content="#5B2EE8">
+<title>Menu Masak Mingguan</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-64.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Menu Masak">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preload" href="fonts/plus-jakarta-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/bricolage-grotesque-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2.5 10h19"/><path d="M5 10v7a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-7"/><path d="M9.5 6.5c0-1 1-1.5 1-2.5M14 6.5c0-1 1-1.5 1-2.5"/><path d="M5 13H3M19 13h2"/></svg></span>
+      <div>
+        <h1>Menu Masak</h1>
+        <p class="status" id="status" data-s="init">Menyiapkan penyimpanan…</p>
+      </div>
+    </div>
+    <div class="month" aria-label="Pilih minggu">
+      <button id="prevW" type="button" aria-label="Minggu sebelumnya">‹</button>
+      <span id="wLabel" aria-live="polite"></span>
+      <button id="nextW" type="button" aria-label="Minggu berikutnya">›</button>
+    </div>
+  </header>
+
+  <section class="hero" aria-label="Ringkasan minggu">
+    <div>
+      <span class="lbl" id="heroLbl">Perkiraan belanja minggu ini</span>
+      <strong id="sTotal">Rp0</strong>
+      <div class="hero-chips">
+        <span class="hchip in"><i></i><b id="sMeals">0</b>&nbsp;porsi</span>
+        <span class="hchip out"><i></i><b id="sItems">0</b>&nbsp;bahan dibeli</span>
+      </div>
+    </div>
+    <div class="ring" id="ring" role="img" aria-label="Anggaran belum diatur">
+      <svg viewBox="0 0 120 120" aria-hidden="true"><circle class="rbg" cx="60" cy="60" r="48"/><circle class="rfg" id="ringFg" cx="60" cy="60" r="48"/></svg>
+      <div class="ring-txt"><b id="ringPct">–</b><small id="ringSub">dari jatah</small></div>
+    </div>
+  </section>
+
+  <div class="bk-banner" id="bkBanner" role="status" hidden>
+    <div class="bk-banner-txt"><strong id="bkBannerTitle">Amankan data Anda</strong><small id="bkBannerText"></small></div>
+    <div class="bk-banner-btns"><button type="button" class="primary" id="bkNow">Unduh cadangan</button><button type="button" class="ghost" id="bkLater">Nanti</button></div>
+  </div>
+
+  <nav class="tabs" role="tablist" aria-label="Menu" data-tab="menu">
+    <button type="button" role="tab" id="tabMenu" aria-controls="panelMenu" aria-selected="true">Menu</button>
+    <button type="button" role="tab" id="tabBelanja" aria-controls="panelBelanja" aria-selected="false">Belanja</button>
+    <button type="button" role="tab" id="tabHarga" aria-controls="panelHarga" aria-selected="false">Harga</button>
+    <button type="button" role="tab" id="tabResep" aria-controls="panelResep" aria-selected="false">Resep</button>
+  </nav>
+
+  <!-- ===================== MENU ===================== -->
+  <section class="panel" id="panelMenu" role="tabpanel" aria-labelledby="tabMenu">
+    <div class="card">
+      <div class="field">
+        <span class="flabel" id="waktuLbl"><span class="step">1</span>Waktu makan yang dimasak</span>
+        <div class="wchips" id="waktuChips" role="group" aria-labelledby="waktuLbl">
+          <button type="button" data-w="pagi" aria-pressed="false"><span class="ico xs" style="--tone:var(--c5)"></span>Sarapan</button>
+          <button type="button" data-w="siang" aria-pressed="true"><span class="ico xs" style="--tone:var(--c9)"></span>Siang</button>
+          <button type="button" data-w="malam" aria-pressed="true"><span class="ico xs" style="--tone:var(--c10)"></span>Malam</button>
+        </div>
+      </div>
+      <div class="wk-row">
+        <span id="porsiLbl" class="flabel"><span class="step">2</span>Porsi sekali makan</span>
+        <div class="stepper" role="group" aria-labelledby="porsiLbl">
+          <button type="button" id="porsiMinus" aria-label="Kurangi porsi">−</button><b id="porsiVal" aria-live="polite">1</b><button type="button" id="porsiPlus" aria-label="Tambah porsi">+</button>
+        </div>
+      </div>
+      <div class="field">
+        <span class="flabel"><span class="step">3</span>Isi menu seminggu</span>
+        <small class="fhint">Ketuk kotak waktu makan untuk memilih menu. Pilih <em>Sisa masakan</em> bila Anda masak sekali untuk dua kali makan, sehingga bahannya dihitung dua porsi.</small>
+        <div class="row-actions">
+          <button type="button" class="ghost accent" id="autoFill">Isi otomatis menu hemat</button>
+          <button type="button" class="ghost" id="copyPrev">Salin menu minggu lalu</button>
+          <button type="button" class="ghost" id="clearWeek">Kosongkan</button>
+        </div>
+        <p class="form-msg" id="menuMsg" role="status"></p>
+      </div>
+    </div>
+    <ul class="day-list" id="dayList"></ul>
+    <button type="button" class="primary big" id="goShop">Lihat daftar belanja</button>
+  </section>
+
+  <!-- ===================== BELANJA ===================== -->
+  <section class="panel" id="panelBelanja" role="tabpanel" aria-labelledby="tabBelanja" hidden>
+    <section class="card budget" id="budgetCard" aria-labelledby="budgetTitle"></section>
+
+    <div class="sec-head"><h2>Daftar belanja</h2><span class="pill" id="cartPill"></span></div>
+    <p class="note" id="shopEmpty" hidden>Belum ada menu yang dipilih untuk minggu ini. Isi menu di tab Menu, dan daftar belanja akan tersusun di sini secara otomatis.</p>
+    <div class="row-actions" id="shopActions">
+      <button type="button" class="ghost accent" id="copyList">Salin daftar belanja</button>
+      <button type="button" class="ghost" id="shareList" hidden>Bagikan</button>
+    </div>
+    <small class="fhint shop-tip">Ketuk nama bahan untuk menyalin kata kuncinya, lalu tempel di pencarian Astro atau GoMart. Centang bahan yang sudah masuk keranjang; ketuk harga untuk mencatat harga sebenarnya.</small>
+    <div class="shop" id="shopList"></div>
+
+    <details class="guide" id="stokBox">
+      <summary>Sudah ada di dapur <span class="pill" id="stokPill"></span></summary>
+      <div class="guide-body">
+        <p class="fhint">Bahan berikut tidak dihitung dalam total belanja. Ketuk <em>Perlu beli</em> bila stoknya habis.</p>
+        <ul class="items stok-list" id="stokList"></ul>
+      </div>
+    </details>
+
+    <details class="guide" id="extraBox">
+      <summary>Barang lain yang ikut dibeli</summary>
+      <div class="guide-body">
+        <p class="fhint">Contoh: galon, sabun cuci piring, atau camilan. Barang ini ikut masuk daftar salin dan total belanja minggu ini.</p>
+        <ul class="items" id="extraList"></ul>
+        <div class="extra-add">
+          <input class="plain" id="extraName" autocomplete="off" placeholder="Nama barang" aria-label="Nama barang">
+          <div class="money"><span>Rp</span><input id="extraPrice" inputmode="numeric" autocomplete="off" placeholder="0" aria-label="Perkiraan harga"></div>
+          <button type="button" class="ghost accent" id="extraAdd">Tambah</button>
+        </div>
+      </div>
+    </details>
+
+    <div class="total">
+      <div><span>Perkiraan bayar</span><strong id="tPay">Rp0</strong></div>
+      <div><span>Nilai bahan yang dimasak</span><strong id="tUsed">Rp0</strong></div>
+    </div>
+    <p class="fhint" id="totalNote"></p>
+    <textarea id="copyFallback" readonly hidden aria-label="Daftar belanja"></textarea>
+  </section>
+
+  <!-- ===================== HARGA ===================== -->
+  <section class="panel" id="panelHarga" role="tabpanel" aria-labelledby="tabHarga" hidden>
+    <details class="guide">
+      <summary>Tentang harga awal</summary>
+      <div class="guide-body">
+        <p>Harga awal hanyalah titik mulai, dibulatkan dari harga pasar tradisional akhir Oktober 2026 (data SP2KP Kementerian Perdagangan untuk DKI Jakarta dan PIHPS Bank Indonesia), lalu disesuaikan dengan ukuran kemasan yang lazim dibeli. Harga di Astro, GoMart, atau supermarket umumnya lebih tinggi.</p>
+        <p>Setelah belanja, perbarui harga sesuai struk atau aplikasi tempat Anda membeli. Harga pribadi inilah yang dipakai untuk semua perkiraan berikutnya, dan perubahan naik atau turunnya ditampilkan.</p>
+      </div>
+    </details>
+    <div class="field">
+      <label for="priceSearch" class="sr">Cari bahan</label>
+      <input class="plain" id="priceSearch" type="search" autocomplete="off" placeholder="Cari bahan, misalnya: telur">
+    </div>
+    <div class="price-groups" id="priceList"></div>
+
+    <section class="card" aria-labelledby="newBahanTitle">
+      <h2 id="newBahanTitle">Tambah bahan sendiri</h2>
+      <div class="two">
+        <div class="field"><label for="nbName">Nama bahan</label><input class="plain" id="nbName" autocomplete="off" placeholder="contoh: Ikan tongkol"></div>
+        <div class="field"><label for="nbKat">Kelompok</label><select id="nbKat"></select></div>
+      </div>
+      <div class="two">
+        <div class="field">
+          <label for="nbIsi">Isi per kemasan</label>
+          <div class="qty"><input id="nbIsi" inputmode="decimal" autocomplete="off" placeholder="500"><select id="nbSat" aria-label="Satuan"></select></div>
+        </div>
+        <div class="field"><label for="nbHarga">Harga per kemasan</label><div class="money"><span>Rp</span><input id="nbHarga" inputmode="numeric" autocomplete="off" placeholder="0"></div></div>
+      </div>
+      <button type="button" class="primary" id="nbAdd">Simpan bahan</button>
+      <p class="form-msg" id="nbMsg" role="status"></p>
+    </section>
+    <div class="row-actions"><button type="button" class="ghost" id="resetPrices">Kembalikan semua ke harga awal</button></div>
+    <p class="form-msg" id="priceMsg" role="status"></p>
+  </section>
+
+  <!-- ===================== RESEP ===================== -->
+  <section class="panel" id="panelResep" role="tabpanel" aria-labelledby="tabResep" hidden>
+    <div class="lbl-row">
+      <div class="mini-seg" id="resepFilter" role="group" aria-label="Saring resep">
+        <button type="button" data-f="" aria-pressed="true">Semua</button><button type="button" data-f="lauk" aria-pressed="false">Lauk</button><button type="button" data-f="sayur" aria-pressed="false">Sayur</button><button type="button" data-f="sekali" aria-pressed="false">Sekali makan</button>
+      </div>
+      <button type="button" class="ghost accent" id="newResep">+ Resep sendiri</button>
+    </div>
+    <small class="fhint">Biaya per porsi dihitung dari harga pribadi Anda di tab Harga, belum termasuk nasi.</small>
+    <ul class="recipe-list" id="recipeList"></ul>
+  </section>
+
+  <section class="card backup" aria-labelledby="bkTitle">
+    <h2 id="bkTitle">Data &amp; cadangan</h2>
+    <p class="bk-text">Menu, harga pribadi, dan resep Anda hanya tersimpan di peramban perangkat ini dan tidak dikirim ke server mana pun. Unduh cadangan secara berkala; file cadangan juga dapat dipakai untuk memindahkan data ke perangkat lain.</p>
+    <p class="bk-meta" id="bkLast"></p>
+    <div class="install" id="installBox" hidden>
+      <strong>Pasang sebagai aplikasi</strong>
+      <small id="installText">Aplikasi yang dipasang di layar utama lebih terlindungi dari penghapusan data otomatis oleh peramban, dan tetap bisa dibuka tanpa internet, termasuk saat belanja di pasar.</small>
+      <button type="button" class="ghost accent" id="installBtn" hidden>Pasang aplikasi</button>
+    </div>
+    <div class="row-actions">
+      <button type="button" class="ghost accent" id="bkExport">Unduh cadangan</button>
+      <label class="ghost bk-import" for="bkFile">Pulihkan dari cadangan</label>
+      <input type="file" id="bkFile" accept="application/json,.json" hidden>
+    </div>
+    <div class="tpl-confirm" id="bkConfirm" hidden>
+      <span id="bkConfirmText"></span>
+      <div class="tpl-confirm-btns"><button type="button" class="ghost confirm" id="bkYes">Ya, pulihkan</button><button type="button" class="ghost" id="bkNo">Batal</button></div>
+    </div>
+    <p class="form-msg" id="bkMsg" role="status"></p>
+  </section>
+
+  <footer class="foot">
+    <span>Harga dan takaran bersifat perkiraan. Data Anda tidak dikirim ke server mana pun.</span>
+    <a href="privasi.html">Kebijakan Privasi &amp; Penafian</a>
+  </footer>
+</div>
+
+<!-- Pemilih menu -->
+<dialog class="sheet" id="pick" aria-labelledby="pickTitle">
+  <div class="sheet-head">
+    <div><h2 id="pickTitle">Pilih menu</h2><small id="pickSub" class="fhint"></small></div>
+    <button type="button" class="primary" id="pickDone">Selesai</button>
+  </div>
+  <div class="sheet-opts" id="pickOpts">
+    <button type="button" class="opt-chip" data-o="sisa" aria-pressed="false"><span class="ico xs" style="--tone:var(--c6)"></span><span id="sisaLbl">Sisa masakan sebelumnya</span></button>
+    <button type="button" class="opt-chip" data-o="luar" aria-pressed="false"><span class="ico xs" style="--tone:var(--c10)"></span>Makan di luar</button>
+  </div>
+  <input class="plain" id="pickSearch" type="search" autocomplete="off" placeholder="Cari menu" aria-label="Cari menu">
+  <div class="mini-seg" id="pickFilter" role="group" aria-label="Saring menu">
+    <button type="button" data-f="" aria-pressed="true">Semua</button><button type="button" data-f="lauk" aria-pressed="false">Lauk</button><button type="button" data-f="sayur" aria-pressed="false">Sayur</button><button type="button" data-f="sekali" aria-pressed="false">Sekali makan</button>
+  </div>
+  <ul class="pick-list" id="pickList"></ul>
+</dialog>
+
+<!-- Penyunting resep -->
+<dialog class="sheet" id="editor" aria-labelledby="edTitle">
+  <div class="sheet-head">
+    <div><h2 id="edTitle">Resep sendiri</h2><small class="fhint">Takaran untuk satu porsi</small></div>
+    <button type="button" class="ghost" id="edClose">Tutup</button>
+  </div>
+  <div class="field"><label for="edName">Nama menu</label><input class="plain" id="edName" autocomplete="off" placeholder="contoh: Tumis jamur"></div>
+  <div class="two">
+    <div class="field">
+      <span class="flabel" id="edJenisLbl">Jenis</span>
+      <div class="mini-seg" id="edJenis" role="group" aria-labelledby="edJenisLbl">
+        <button type="button" data-v="lauk" aria-pressed="true">Lauk</button><button type="button" data-v="sayur" aria-pressed="false">Sayur</button><button type="button" data-v="sekali" aria-pressed="false">Sekali makan</button>
+      </div>
+    </div>
+    <div class="field"><label for="edMenit">Waktu masak (menit)</label><input class="plain" id="edMenit" inputmode="numeric" autocomplete="off" placeholder="20"></div>
+  </div>
+  <div class="field">
+    <span class="flabel">Bahan per porsi</span>
+    <ul class="items" id="edBahan"></ul>
+    <button type="button" class="link" id="edAddBahan">+ Tambah bahan</button>
+  </div>
+  <div class="field"><label for="edNote">Catatan <span class="opt">(opsional)</span></label><input class="plain" id="edNote" autocomplete="off"></div>
+  <p class="fhint" id="edCost"></p>
+  <button type="button" class="primary" id="edSave">Simpan resep</button>
+  <p class="form-msg" id="edMsg" role="status"></p>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,286 @@
+"""Tes otomatis Menu Masak Mingguan.
+
+Menjalankan aplikasi di peramban tanpa layar (Chromium lewat Playwright) dan
+memeriksa perhitungan utama. Jalankan dari folder repositori:
+
+    pip install playwright && python -m playwright install chromium
+    python tests/test_app.py
+"""
+import asyncio
+import calendar
+import datetime
+import functools
+import http.server
+import json
+import pathlib
+import sys
+import threading
+
+from playwright.async_api import async_playwright
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+LS_KEY = "menu-kost-v1"
+AMPLOP_KEY = "amplop-gajian-dapur"
+
+results = []
+
+
+def check(name, cond, detail=""):
+    results.append((name, bool(cond), detail))
+    print(("  OK   " if cond else "  GAGAL") + "  " + name + (("  — " + str(detail)) if detail and not cond else ""))
+
+
+def serve():
+    class Quiet(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+    handler = functools.partial(Quiet, directory=str(ROOT))
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, f"http://127.0.0.1:{srv.server_address[1]}/index.html"
+
+
+async def fresh(browser, url, scheme="light", setup=None):
+    ctx = await browser.new_context(viewport={"width": 390, "height": 844}, color_scheme=scheme,
+                                    permissions=["clipboard-read", "clipboard-write"])
+    page = await ctx.new_page()
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    await page.goto(url)
+    if setup:
+        await page.evaluate(setup)
+        await page.reload()
+    await page.wait_for_timeout(250)
+    return ctx, page, errors
+
+
+async def pick(page, d, w, ids):
+    await page.click(f'.slot[data-d="{d}"][data-w="{w}"]')
+    for i in ids:
+        await page.click(f'#pickList .pitem[data-id="{i}"]')
+    await page.click("#pickDone")
+    await page.wait_for_timeout(120)
+
+
+async def pick_opt(page, d, w, opt):
+    await page.click(f'.slot[data-d="{d}"][data-w="{w}"]')
+    await page.click(f'#pickOpts [data-o="{opt}"]')
+    await page.click("#pickDone")
+    await page.wait_for_timeout(120)
+
+
+async def sh(page):
+    return await page.evaluate("""() => { const s = window.__menuKost.shopping();
+      return { pay: s.pay, used: s.used, meals: s.cw.meals,
+               items: Object.fromEntries(s.items.map(x => [x.id, { need: x.need, packs: x.packs, cost: x.cost, stok: x.stok }])) }; }""")
+
+
+async def num(page, sel):
+    t = await page.text_content(sel) or ""
+    return int("".join(ch for ch in t if ch.isdigit()) or 0)
+
+
+async def test_layout(b, url):
+    print("Tampilan awal")
+    for scheme in ("light", "dark"):
+        ctx, page, errors = await fresh(b, url, scheme)
+        check(f"{scheme}: 7 kartu hari", await page.locator(".day").count() == 7)
+        check(f"{scheme}: 14 slot (siang & malam)", await page.locator(".slot").count() == 14)
+        for tab in ("#tabMenu", "#tabBelanja", "#tabHarga", "#tabResep"):
+            await page.click(tab)
+            await page.wait_for_timeout(150)
+            wide = await page.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth")
+            check(f"{scheme} {tab}: tidak menggulir ke samping", not wide)
+        check(f"{scheme}: tanpa galat skrip", not errors, errors)
+        await ctx.close()
+
+
+async def test_sisa_and_portions(b, url):
+    print("Kebutuhan bahan, sisa masakan, dan porsi")
+    ctx, page, errors = await fresh(b, url)
+    await pick(page, 0, "siang", ["telur_dadar"])
+    await pick_opt(page, 0, "malam", "sisa")
+    s = await sh(page)
+    check("sisa dihitung sebagai porsi kedua", s["meals"] == 2)
+    check("telur 2 porsi = 4 butir", abs(s["items"]["telur"]["need"] - 4) < 1e-9, s["items"].get("telur"))
+    check("beras ikut dihitung 200 g", abs(s["items"]["beras"]["need"] - 200) < 1e-9)
+    check("beras dan minyak dianggap stok", s["items"]["beras"]["stok"] and s["items"]["minyak"]["stok"])
+    check("perkiraan bayar = telur + bawang merah + daun bawang + cabai rawit", s["pay"] == 19000 + 10000 + 3000 + 10000, s["pay"])
+    check("label slot malam menyebut sisa siang", "Sisa siang" in (await page.text_content('.slot[data-d="0"][data-w="malam"]')))
+    check("ringkasan atas menampilkan total", await num(page, "#sTotal") >= 0)
+    await page.click("#porsiPlus")
+    await page.click("#porsiPlus")
+    s = await sh(page)
+    check("3 porsi: telur 12 butir = 2 kemasan", s["items"]["telur"]["packs"] == 2, s["items"]["telur"])
+    await page.click("#porsiMinus")
+    await page.click("#porsiMinus")
+    await page.click("#tabBelanja")
+    await page.click('.sitem[data-id="telur"] .to-stok')
+    s = await sh(page)
+    check("tandai 'sudah ada' mengeluarkan telur dari total", s["pay"] == 23000, s["pay"])
+    await page.click("#stokBox summary")
+    await page.click('#stokList [data-id="beras"] .to-buy')
+    s = await sh(page)
+    check("beras 'perlu beli' menambah 1 karung 5 kg", s["pay"] == 23000 + 80000, s["pay"])
+    await page.click('.sitem[data-id="beras"] .check')
+    check("centang keranjang tercatat", "1 dari" in (await page.text_content("#cartPill")))
+    check("tanpa galat skrip", not errors, errors)
+    await ctx.close()
+
+
+async def test_prices_and_copy(b, url):
+    print("Harga pribadi dan salin daftar")
+    ctx, page, errors = await fresh(b, url)
+    await pick(page, 1, "siang", ["tempe_orek", "tumis_kangkung"])
+    await page.click("#tabBelanja")
+    await page.click('.sitem[data-id="tempe"] .sprice')
+    await page.fill(".pe-in", "7500")
+    await page.click(".pe-save")
+    s = await sh(page)
+    check("harga tempe diperbarui dari daftar belanja", s["items"]["tempe"]["cost"] == 7500, s["items"]["tempe"])
+    await page.reload()
+    await page.wait_for_timeout(250)
+    s = await sh(page)
+    check("harga pribadi tersimpan setelah dimuat ulang", s["items"]["tempe"]["cost"] == 7500)
+    await page.click("#tabHarga")
+    meta = await page.text_content('.prow[data-id="tempe"] .prow-meta')
+    check("tab Harga menampilkan kenaikan", "naik Rp1.500" in meta, meta)
+    await page.fill('.prow[data-id="kangkung"] .p-isi', "2")
+    await page.dispatch_event('.prow[data-id="kangkung"] .p-isi', "change")
+    await page.fill('.prow[data-id="kangkung"] .p-h', "7000")
+    await page.dispatch_event('.prow[data-id="kangkung"] .p-h', "change")
+    s = await sh(page)
+    check("ubah isi kemasan kangkung menjadi 2 ikat", s["items"]["kangkung"]["packs"] == 1 and s["items"]["kangkung"]["cost"] == 7000, s["items"]["kangkung"])
+    await page.click('.prow[data-id="tempe"] .p-reset')
+    s = await sh(page)
+    check("kembalikan ke harga awal", s["items"]["tempe"]["cost"] == 6000)
+    await page.click("#tabBelanja")
+    await page.click("#copyList")
+    await page.wait_for_timeout(150)
+    clip = await page.evaluate("navigator.clipboard.readText()")
+    check("daftar disalin dengan judul minggu", clip.startswith("Daftar belanja "), clip[:40])
+    check("daftar memuat tempe dan kemasannya", "- Tempe — 1 papan (±300 g)" in clip, clip)
+    check("bahan stok tidak ikut disalin", "Garam" not in clip and "Kecap" not in clip)
+    check("daftar memuat perkiraan total", "Perkiraan total: Rp" in clip)
+    await page.click('.sitem[data-id="tempe"] .sname')
+    await page.wait_for_timeout(100)
+    check("ketuk nama menyalin kata kunci", await page.evaluate("navigator.clipboard.readText()") == "tempe")
+    await page.click("#extraBox summary")
+    await page.fill("#extraName", "Galon isi ulang")
+    await page.fill("#extraPrice", "20000")
+    await page.click("#extraAdd")
+    s2 = await sh(page)
+    check("barang lain ikut total", s2["pay"] == s["pay"] + 20000, (s["pay"], s2["pay"]))
+    # Bahan sendiri dan resep sendiri
+    await page.click("#tabHarga")
+    await page.fill("#nbName", "Ikan tongkol")
+    await page.select_option("#nbKat", "lauk")
+    await page.fill("#nbIsi", "500")
+    await page.select_option("#nbSat", "g")
+    await page.fill("#nbHarga", "22000")
+    await page.click("#nbAdd")
+    check("bahan sendiri tersimpan", "Ikan tongkol" in (await page.text_content("#priceList")))
+    await page.click("#tabResep")
+    await page.click("#newResep")
+    await page.fill("#edName", "Tongkol balado")
+    await page.select_option("#edBahan .ed-row >> nth=0 >> select", label="Ikan tongkol")
+    await page.fill("#edBahan .ed-row >> nth=0 >> .ed-q", "125")
+    await page.click("#edSave")
+    await page.wait_for_timeout(150)
+    check("resep sendiri tampil di daftar resep", "Tongkol balado" in (await page.text_content("#recipeList")))
+    await page.click("#tabMenu")
+    own = await page.evaluate("window.__menuKost.state().resep[0].id")
+    await pick(page, 2, "siang", [own])
+    s = await sh(page)
+    tid = [k for k in s["items"] if k.startswith("own_")]
+    check("resep sendiri masuk daftar belanja", tid and abs(s["items"][tid[0]]["need"] - 125) < 1e-9, s["items"])
+    check("tanpa galat skrip", not errors, errors)
+    await ctx.close()
+
+
+async def test_budget(b, url):
+    print("Perbandingan dengan amplop Dapur & makan")
+    today = datetime.date.today()
+    bulan = f"{today.year}-{today.month:02d}"
+    data = {"v": 1, "bulan": bulan, "diperbarui": datetime.datetime.now().isoformat(), "nama": "Dapur & makan", "pagu": 1245000, "lain": 0, "belumIsi": False,
+            "items": [{"n": "Belanja lauk & sayur", "pagu": 700000, "terpakai": 100000}, {"n": "Beras", "pagu": 120000, "terpakai": 0},
+                      {"n": "Bumbu & minyak goreng", "pagu": 80000, "terpakai": 20000}, {"n": "Gas LPG", "pagu": 45000, "terpakai": 0},
+                      {"n": "Makan di luar & jajan", "pagu": 300000, "terpakai": 50000}]}
+    setup = f"localStorage.setItem('{AMPLOP_KEY}', {json.dumps(json.dumps(data))})"
+    ctx, page, errors = await fresh(b, url, setup=setup)
+    days = calendar.monthrange(today.year, today.month)[1]
+    bg = await page.evaluate("window.__menuKost.budget()")
+    check("sumber otomatis dari Amplop Gajian", bg["src"] == "auto", bg.get("src"))
+    check("pagu bahan tanpa makan di luar dan gas", bg["pagu"] == 900000, bg.get("pagu"))
+    check("terpakai hanya dari rincian bahan", bg["terpakai"] == 120000, bg.get("terpakai"))
+    check("jatah per minggu proporsional", bg["jatah"] == round(900000 * 7 / days), (bg.get("jatah"), round(900000 * 7 / days)))
+    await page.click("#autoFill")
+    await page.click("#tabBelanja")
+    txt = await page.text_content("#budgetCard")
+    check("kartu anggaran menampilkan jatah", "Jatah belanja per minggu" in txt and "Sisa amplop" in txt)
+    ring = await page.text_content("#ringPct")
+    check("cincin ringkasan menampilkan persen jatah", ring.endswith("%"), ring)
+    await page.click("#budgetCard summary")
+    await page.click('#budgetCard .switch[data-n="Gas LPG"]')
+    bg = await page.evaluate("window.__menuKost.budget()")
+    check("gas dapat dihitung bila diinginkan", bg["pagu"] == 945000, bg.get("pagu"))
+    await page.click("#useManual")
+    await page.fill("#manualBudget", "800000")
+    await page.dispatch_event("#manualBudget", "input")
+    bg = await page.evaluate("window.__menuKost.budget()")
+    check("anggaran manual dipakai", bg["src"] == "manual" and bg["jatah"] > 0, bg)
+    check("tanpa galat skrip", not errors, errors)
+    await ctx.close()
+
+
+async def test_week_tools_and_backup(b, url, tmp):
+    print("Isi otomatis, salin minggu, dan cadangan")
+    ctx, page, errors = await fresh(b, url)
+    await page.click("#autoFill")
+    filled = await page.locator(".slot.filled").count()
+    check("isi otomatis mengisi 14 slot", filled == 14, filled)
+    s = await sh(page)
+    check("isi otomatis menghasilkan daftar belanja", s["pay"] > 50000 and s["meals"] == 14, s["pay"])
+    await page.click("#nextW")
+    await page.click("#copyPrev")
+    check("salin minggu lalu ke minggu kosong", await page.locator(".slot.filled").count() == 14)
+    await page.click("#clearWeek")
+    await page.click("#clearWeek")
+    check("kosongkan perlu dua ketukan", await page.locator(".slot.filled").count() == 0)
+    await page.click("#prevW")
+    async with page.expect_download() as dl:
+        await page.click("#bkExport")
+    path = tmp / "cadangan.json"
+    await (await dl.value).save_as(path)
+    data = json.loads(path.read_text())
+    check("cadangan berformat menu-kost", data.get("app") == "menu-kost" and data["data"]["minggu"])
+    await ctx.close()
+    ctx, page, errors = await fresh(b, url)   # perangkat lain: penyimpanan masih kosong
+    check("perangkat baru masih kosong", await page.locator(".slot.filled").count() == 0)
+    await page.set_input_files("#bkFile", str(path))
+    await page.wait_for_timeout(200)
+    await page.click("#bkYes")
+    await page.wait_for_timeout(200)
+    check("cadangan dipulihkan", await page.locator(".slot.filled").count() == 14)
+    check("tanpa galat skrip", not errors, errors)
+    await ctx.close()
+
+
+async def main():
+    srv, url = serve()
+    tmp = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "tests"
+    async with async_playwright() as p:
+        b = await p.chromium.launch()
+        await test_layout(b, url)
+        await test_sisa_and_portions(b, url)
+        await test_prices_and_copy(b, url)
+        await test_budget(b, url)
+        await test_week_tools_and_backup(b, url, tmp)
+        await b.close()
+    srv.shutdown()
+    bad = [r for r in results if not r[1]]
+    print(f"\n{len(results) - len(bad)} lulus, {len(bad)} gagal")
+    sys.exit(1 if bad else 0)
+
+
+asyncio.run(main())

@@ -143,6 +143,18 @@
       <div><span>Nilai bahan yang dimasak</span><strong id="tUsed">Rp0</strong></div>
     </div>
     <p class="fhint" id="totalNote"></p>
+
+    <section class="card done" id="doneCard" aria-labelledby="doneTitle" hidden>
+      <h2 id="doneTitle">Selesai belanja?</h2>
+      <p class="fhint">Isi total yang benar-benar dibayar, lalu catat ke amplop Dapur &amp; makan. Amplop Gajian akan terbuka dengan nominal dan keterangan sudah terisi; Anda tinggal memeriksa lalu menekan <em>Catat pengeluaran</em>.</p>
+      <div class="field">
+        <label for="paidIn">Total dibayar</label>
+        <div class="money big"><span>Rp</span><input id="paidIn" inputmode="numeric" autocomplete="off" placeholder="0"></div>
+        <small class="fhint" id="paidDiff"></small>
+      </div>
+      <p class="done-status" id="doneStatus" role="status"></p>
+      <button type="button" class="primary big" id="toAmplop">Catat ke Amplop Gajian</button>
+    </section>
     <textarea id="copyFallback" readonly hidden aria-label="Daftar belanja"></textarea>
   </section>
 

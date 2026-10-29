@@ -94,6 +94,7 @@
       stok: (w.stok && typeof w.stok === 'object') ? w.stok : {},
       beli: (w.beli && typeof w.beli === 'object') ? w.beli : {},
       awal: (w.awal && typeof w.awal === 'object') ? w.awal : {},   // koreksi sisa di dapur pada awal minggu
+      bayar: Math.max(0, Number(w.bayar) || 0),
       extra: Array.isArray(w.extra) ? w.extra.filter(x => x && x.n).map(x => ({ id: String(x.id || newId()), n: String(x.n), h: Math.max(0, Number(x.h) || 0) })) : []
     };
   }
@@ -558,10 +559,13 @@
   /* ---------- Tab Belanja ---------- */
   const bar = (val, max) => '<div class="bar"><i style="width:' + Math.min(100, max > 0 ? val / max * 100 : 0).toFixed(1) + '%"></i></div>';
   const cmpState = (val, max) => val > max ? 'bad' : val > max * 0.9 ? 'warn' : 'ok';
+  // Belanja minggu ini: nominal yang sudah dicatat di Amplop Gajian bila ada, selain itu perkiraan.
+  const effPay = (sh) => { const r = recorded(wk); return r ? r.amt : sh.pay; };
   function weekCmp(sh, bg){
     if (!(bg.jatah > 0)) return '';
-    return '<div class="cmp ' + cmpState(sh.pay, bg.jatah) + '"><div class="cmp-top"><span>Jatah belanja per minggu</span><b>' + rp(bg.jatah) + '</b></div>' + bar(sh.pay, bg.jatah) +
-      '<span class="cmp-note">Belanja minggu ini ' + rp(sh.pay) + ' · ' + (sh.pay <= bg.jatah ? '<strong>masih hemat ' + rp(bg.jatah - sh.pay) + '</strong>' : '<strong>lebih ' + rp(sh.pay - bg.jatah) + '</strong>') + '</span></div>';
+    const pay = effPay(sh), lbl = recorded(wk) ? 'Belanja minggu ini (dicatat) ' : 'Belanja minggu ini ';
+    return '<div class="cmp ' + cmpState(pay, bg.jatah) + '"><div class="cmp-top"><span>Jatah belanja per minggu</span><b>' + rp(bg.jatah) + '</b></div>' + bar(pay, bg.jatah) +
+      '<span class="cmp-note">' + lbl + rp(pay) + ' · ' + (pay <= bg.jatah ? '<strong>masih hemat ' + rp(bg.jatah - pay) + '</strong>' : '<strong>lebih ' + rp(pay - bg.jatah) + '</strong>') + '</span></div>';
   }
   function renderBudget(sh){
     const bg = budget(), card = $('#budgetCard'), a = bg.a;
@@ -572,9 +576,11 @@
       html += '<p class="src' + (bg.beda ? ' old' : '') + '"><i class="dot"></i><span>Dari Amplop Gajian: amplop <b>' + esc(a.nama || 'Dapur & makan') + '</b> ' + BULAN[m - 1] + ' ' + y + (when ? ' · diperbarui ' + when : '') + '</span></p>';
       if (bg.beda) html += '<p class="autonote"><strong>Perhatikan:</strong> minggu ini jatuh di bulan yang berbeda dari data amplop. Buka Amplop Gajian di bulan berjalan agar angkanya mengikuti.</p>';
       html += weekCmp(sh, bg);
-      const after = bg.sisa - sh.pay, s2 = after < 0 ? 'bad' : after < bg.pagu * 0.1 ? 'warn' : 'ok';
-      html += '<div class="cmp ' + s2 + '"><div class="cmp-top"><span>Sisa amplop untuk bahan masak bulan ini</span><b>' + rp(bg.sisa) + '</b></div>' + bar(bg.terpakai + sh.pay, bg.pagu) +
-        '<span class="cmp-note">Pagu ' + rp(bg.pagu) + ', sudah dicatat ' + rp(bg.terpakai) + ' · setelah belanja ini <strong>' + rp(after) + '</strong></span></div>';
+      // Bila belanja minggu ini sudah dicatat, nominalnya sudah termasuk dalam "sudah dicatat" sehingga tidak dikurangi lagi.
+      const rec = recorded(wk), extra = rec ? 0 : sh.pay;
+      const after = bg.sisa - extra, s2 = after < 0 ? 'bad' : after < bg.pagu * 0.1 ? 'warn' : 'ok';
+      html += '<div class="cmp ' + s2 + '"><div class="cmp-top"><span>Sisa amplop untuk bahan masak bulan ini</span><b>' + rp(bg.sisa) + '</b></div>' + bar(bg.terpakai + extra, bg.pagu) +
+        '<span class="cmp-note">Pagu ' + rp(bg.pagu) + ', sudah dicatat ' + rp(bg.terpakai) + (rec ? ' (termasuk belanja minggu ini)' : ' · setelah belanja ini <strong>' + rp(after) + '</strong>') + '</span></div>';
       html += '<details class="guide inner"><summary>Rincian amplop yang dihitung</summary><div class="guide-body"><p class="fhint">Makan di luar, jajan, dan gas tidak dihitung sebagai belanja bahan secara bawaan. Ubah bila perlu.</p><ul class="count-list">' +
         bg.items.map(x => '<li><span>' + esc(x.n) + ' <small>' + rp(x.pagu) + '</small></span><button type="button" class="switch" role="switch" aria-checked="' + x.on + '" data-n="' + esc(x.n) + '" aria-label="Hitung ' + esc(x.n) + '"><span></span></button></li>').join('') +
         '</ul><button type="button" class="link" id="useManual">Pakai anggaran manual saja</button></div></details>';
@@ -654,6 +660,7 @@
     const per = sh.cw.meals ? sh.used / (sh.cw.meals * S.set.porsi) : 0;
     $('#totalNote').textContent = has ? 'Nilai bahan yang dimasak sekitar ' + rpE(per) + ' per porsi. Selisih dengan perkiraan bayar adalah sisa kemasan yang menjadi stok untuk minggu berikutnya' + (sh.stok.length ? ', sedangkan bahan yang sudah ada di dapur tidak ikut dibayar' : '') + '.' : '';
     $('#shareList').hidden = !(navigator.share && has);
+    renderDone(sh);
     if (animate) flow($('#shopList'));
     renderSummary(sh);
   }
@@ -740,6 +747,46 @@
   $('#copyList').addEventListener('click', () => copyText(listText(), 'Daftar belanja disalin. Tempel di catatan, WhatsApp, atau pakai saat mencari di Astro dan GoMart.'));
   $('#shareList').addEventListener('click', async () => {
     try { await navigator.share({ title: 'Daftar belanja ' + weekLabel(wk, true), text: listText() }); } catch (e) {}
+  });
+
+  /* ---------- Selesai belanja: catat ke Amplop Gajian ---------- */
+  const CONFIRM_KEY = 'menu-kost-dicatat';   // ditulis Amplop Gajian setelah pengguna menekan Catat
+  function recorded(k){
+    try { const o = JSON.parse(localStorage.getItem(CONFIRM_KEY) || '{}') || {}; const r = o[k]; return r && r.amt > 0 ? r : null; } catch (e) { return null; }
+  }
+  const ketOf = (k) => 'Belanja mingguan ' + weekLabel(k, true) + ' (Menu Masak)';
+  function cartTotal(sh){
+    const inCart = sh.buy.filter(x => x.bought);
+    return inCart.length ? inCart.reduce((s, x) => s + x.cost, 0) + sh.extra.reduce((s, x) => s + x.h, 0) : sh.pay;
+  }
+  function renderDone(sh){
+    const card = $('#doneCard'), w = peekWeek(wk), rec = recorded(wk);
+    card.hidden = !(sh.buy.length || sh.extra.length || rec);
+    if (card.hidden) return;
+    const inp = $('#paidIn');
+    if (document.activeElement !== inp) inp.value = fmt(w && w.bayar ? w.bayar : cartTotal(sh));
+    const st = $('#doneStatus');
+    if (rec) {
+      const d = rec.date ? rec.date.split('-').reverse().join('/') : '';
+      st.className = 'done-status ok';
+      st.innerHTML = 'Sudah dicatat di Amplop Gajian: <b>' + rp(rec.amt) + '</b>' + (d ? ' pada ' + d : '') + '.';
+      $('#toAmplop').textContent = 'Catat lagi ke Amplop Gajian';
+    } else {
+      st.className = 'done-status';
+      st.textContent = 'Belum dicatat ke amplop Dapur & makan.';
+      $('#toAmplop').textContent = 'Catat ke Amplop Gajian';
+    }
+    const est = sh.pay, paid = digits(inp.value);
+    $('#paidDiff').textContent = paid && paid !== est ? 'Perkiraan aplikasi ' + rp(est) + ' · selisih ' + (paid > est ? '+' : '−') + rp(Math.abs(paid - est)) + '. Perbarui harga di daftar agar perkiraan berikutnya lebih tepat.' : '';
+  }
+  bindMoney($('#paidIn'), (v) => { const w = W(); w.bayar = v; save(); renderDone(shopping()); });
+  $('#toAmplop').addEventListener('click', () => {
+    const amt = digits($('#paidIn').value);
+    if (!amt) { toast('Isi total yang dibayar lebih dulu.'); $('#paidIn').focus(); return; }
+    if (recorded(wk) && !armed($('#toAmplop'), 'Sudah pernah dicatat. Ketuk lagi bila yakin')) return;
+    W().bayar = amt; writeNow();
+    const q = new URLSearchParams({ jumlah: String(amt), ket: ketOf(wk), ref: wk });
+    location.href = '../amplop-gajian/#catat?' + q.toString();
   });
 
   /* ---------- Tab Harga ---------- */
@@ -966,8 +1013,9 @@
     $('#menuMsg').textContent = '';
   }
   // Data amplop dapat berubah di tab lain (Amplop Gajian) — muat ulang anggaran saat kembali.
-  window.addEventListener('storage', (e) => { if (e.key === AMPLOP_KEY) { renderSummary(); if (curTab() === 'belanja') renderBudget(shopping()); } });
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { renderSummary(); if (curTab() === 'belanja') renderBudget(shopping()); } });
+  window.addEventListener('storage', (e) => { if (e.key === AMPLOP_KEY || e.key === CONFIRM_KEY) { renderSummary(); if (curTab() === 'belanja') renderShop(); } });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { renderSummary(); if (curTab() === 'belanja') renderShop(); } });
+  window.addEventListener('pageshow', (e) => { if (e.persisted) { renderSummary(); if (curTab() === 'belanja') renderShop(); } });
 
   /* ---------- Cadangan ---------- */
   function readMeta(){ try { return JSON.parse(localStorage.getItem(META_KEY) || '{}') || {}; } catch (e) { return {}; } }

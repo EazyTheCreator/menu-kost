@@ -107,6 +107,16 @@
     <small class="fhint shop-tip">Ketuk nama bahan untuk menyalin kata kuncinya, lalu tempel di pencarian Astro atau GoMart. Centang bahan yang sudah masuk keranjang; ketuk harga untuk mencatat harga sebenarnya.</small>
     <div class="shop" id="shopList"></div>
 
+    <details class="guide" id="sisaBox">
+      <summary>Sisa kemasan <span class="pill ok" id="sisaPill"></span></summary>
+      <div class="guide-body">
+        <p class="fhint">Bahan awet seperti bawang, telur, dan kentang yang tersisa dari kemasan minggu lalu otomatis mengurangi daftar belanja. Angkanya perkiraan; koreksi dengan <em>ubah sisa</em> bila kenyataannya berbeda.</p>
+        <p class="flabel" id="coverHead">Cukup dari sisa, tidak perlu dibeli</p>
+        <ul class="items stok-list" id="coverList"></ul>
+        <p class="fhint" id="leftNote"></p>
+      </div>
+    </details>
+
     <details class="guide" id="stokBox">
       <summary>Sudah ada di dapur <span class="pill" id="stokPill"></span></summary>
       <div class="guide-body">

@@ -63,7 +63,7 @@
   /* ---------- Penyimpanan ---------- */
   const defaults = () => ({
     v: 1,
-    set: { porsi: 1, waktu: { pagi: false, siang: true, malam: true }, beras: 100, sumber: 'auto', manual: 0, hitung: {} },
+    set: { porsi: 1, waktu: { pagi: false, siang: true, malam: true }, beras: 100, sumber: 'auto', manual: 0, hitung: {}, kulkas: 'tidak' },
     harga: {},      // id bahan bawaan -> { h, isi, t, prev }
     bahan: {},      // bahan buatan sendiri: id -> { n, k, s, isi, lbl, h, stok, q, t, prev }
     resep: [],      // resep buatan sendiri
@@ -79,6 +79,7 @@
     s.set.sumber = set.sumber === 'manual' ? 'manual' : 'auto';
     s.set.manual = Math.max(0, Number(set.manual) || 0);
     s.set.hitung = (set.hitung && typeof set.hitung === 'object') ? set.hitung : {};
+    s.set.kulkas = ['tidak', 'kulkas', 'freezer'].includes(set.kulkas) ? set.kulkas : 'tidak';
     s.harga = (o.harga && typeof o.harga === 'object') ? o.harga : {};
     s.bahan = (o.bahan && typeof o.bahan === 'object') ? o.bahan : {};
     s.resep = Array.isArray(o.resep) ? o.resep.filter(r => r && r.id && r.n && Array.isArray(r.bahan)) : [];
@@ -92,6 +93,7 @@
       slot: (w.slot && typeof w.slot === 'object') ? w.slot : {},
       stok: (w.stok && typeof w.stok === 'object') ? w.stok : {},
       beli: (w.beli && typeof w.beli === 'object') ? w.beli : {},
+      awal: (w.awal && typeof w.awal === 'object') ? w.awal : {},   // koreksi sisa di dapur pada awal minggu
       extra: Array.isArray(w.extra) ? w.extra.filter(x => x && x.n).map(x => ({ id: String(x.id || newId()), n: String(x.n), h: Math.max(0, Number(x.h) || 0) })) : []
     };
   }
@@ -137,6 +139,13 @@
     if (c) return Object.assign({ id, own:true, edited: !!c.t }, c, { lbl: qtyLbl(c.isi, c.s) });
     return null;
   }
+  // Daya tahan (hari) sesuai ketersediaan kulkas; bahan dianggap awet bila tahan lebih dari sepekan.
+  function shelf(b){
+    const t = Array.isArray(b.tahan) ? b.tahan : [7, 14];
+    if (S.set.kulkas === 'freezer' && b.beku) return 60;
+    return S.set.kulkas === 'tidak' ? t[0] : t[1];
+  }
+  const durable = (b) => shelf(b) >= 10;
   const bahanIds = () => Object.keys(D.BAHAN).concat(Object.keys(S.bahan));
   const resepAll = () => D.RESEP.map(r => Object.assign({ own:false }, r)).concat(S.resep.map(r => Object.assign({ own:true }, r)));
   const resepById = (id) => resepAll().find(r => r.id === id) || null;
@@ -201,23 +210,56 @@
   }
   const usedValue = (need) => Object.keys(need).reduce((s, id) => { const b = bahan(id); return s + (b && b.isi ? need[id] / b.isi * b.h : 0); }, 0);
   // Daftar belanja: kebutuhan dibulatkan ke atas menjadi kemasan utuh (toleransi 4%).
-  function shopping(){
-    const w = peekWeek(wk);
+  // Rencana belanja satu minggu. Sisa kemasan bahan awet dari minggu sebelumnya (berantai, maksimal
+  // enam minggu ke belakang) mengurangi kebutuhan sebelum dibulatkan ke kemasan utuh.
+  const TINY = 1e-6;
+  function planWeek(k, depth, memo){
+    if (memo.has(k)) return memo.get(k);
+    const w = peekWeek(k);
     const cw = computeWeek(w), need = needsOf(cw.count, cw.rice);
+    const carried = startStock(k, depth, memo);
+    const start = Object.assign({}, carried);
+    if (w) Object.keys(w.awal).forEach(id => { start[id] = Math.max(0, Number(w.awal[id]) || 0); });
+    const leftover = {};
     const items = Object.keys(need).map(id => {
       const b = bahan(id);
-      const packs = Math.max(1, Math.ceil(need[id] / b.isi - 0.04));
-      const stokSet = w && w.stok && id in w.stok;
-      const stok = stokSet ? !!w.stok[id] : b.stok;
-      return { id, b, need: need[id], packs, cost: packs * b.h, used: need[id] / b.isi * b.h, stok, bought: !!(w && w.beli[id]) };
+      const stok = (w && id in w.stok) ? !!w.stok[id] : b.stok;
+      const keep = !stok && durable(b);
+      const have = keep ? (start[id] || 0) : 0;
+      const net = Math.max(0, need[id] - have);
+      const packs = net > TINY ? Math.max(1, Math.ceil(net / b.isi - 0.04)) : 0;
+      if (keep) {
+        // Bahan satuan (butir, kaleng, kotak) hanya dihitung utuh; kemasan kaleng atau kotak yang sudah dibuka tidak awet.
+        let rest = have + packs * b.isi - need[id];
+        if (b.s !== 'g' && b.s !== 'ml') rest = Math.floor(rest + 1e-9);
+        if (b.utuh) rest = Math.floor(rest / b.isi + 1e-9) * b.isi;
+        if (rest > b.isi * 0.02) leftover[id] = rest;
+      }
+      return { id, b, need: need[id], have, carried: carried[id] || 0, fixed: !!(w && id in w.awal), packs,
+        cost: stok ? 0 : packs * b.h, used: need[id] / b.isi * b.h, stok, bought: !!(w && w.beli[id]) };
     });
-    const order = D.KAT.map(k => k.id);
-    items.sort((a, b) => (order.indexOf(a.b.k) - order.indexOf(b.b.k)) || a.b.n.localeCompare(b.b.n, 'id'));
-    const extra = w ? w.extra : [];
-    const buy = items.filter(x => !x.stok);
+    // Sisa bahan awet yang tidak dipakai minggu ini tetap tersimpan untuk minggu berikutnya.
+    Object.keys(start).forEach(id => { const b = bahan(id); if (!(id in need) && b && durable(b) && start[id] > TINY) leftover[id] = start[id]; });
+    const res = { w, cw, need, items, leftover };
+    memo.set(k, res);
+    return res;
+  }
+  function startStock(k, depth, memo){
+    if (depth >= 6) return {};
+    const prevK = ymd(addDays(parseYmd(k), -7));
+    if (weekIsEmpty(peekWeek(prevK))) return {};
+    return planWeek(prevK, depth + 1, memo).leftover;
+  }
+  function shopping(k){
+    const p = planWeek(k || wk, 0, new Map());
+    const order = D.KAT.map(x => x.id);
+    const items = p.items.slice().sort((a, b) => (order.indexOf(a.b.k) - order.indexOf(b.b.k)) || a.b.n.localeCompare(b.b.n, 'id'));
+    const extra = p.w ? p.w.extra : [];
+    const buy = items.filter(x => !x.stok && x.packs > 0);
+    const covered = items.filter(x => !x.stok && x.packs === 0);
     const pay = buy.reduce((s, x) => s + x.cost, 0) + extra.reduce((s, x) => s + x.h, 0);
     const used = items.reduce((s, x) => s + x.used, 0);
-    return { cw, items, buy, stok: items.filter(x => x.stok), extra, pay, used };
+    return { cw: p.cw, items, buy, covered, stok: items.filter(x => x.stok), extra, pay, used, leftover: p.leftover };
   }
 
   /* ---------- Anggaran dari Amplop Gajian ---------- */
@@ -380,9 +422,11 @@
 
   // Isi otomatis yang hemat: setiap slot memilih kombinasi menu dengan tambahan biaya belanja terkecil
   // (memakai ulang bahan yang sudah dibeli), dengan batas pengulangan agar menu tetap bervariasi.
-  const packPay = (need) => Object.keys(need).reduce((s, id) => { const b = bahan(id); return (!b || b.stok) ? s : s + Math.max(1, Math.ceil(need[id] / b.isi - 0.04)) * b.h; }, 0);
-  function chooseCheap(w, options, d, used){
-    const cw = computeWeek(w), base = needsOf(cw.count, cw.rice), basePay = packPay(base), porsi = S.set.porsi;
+  const packPay = (need) => Object.keys(need).reduce((s, id) => { const b = bahan(id); return (!b || b.stok || need[id] <= TINY) ? s : s + Math.max(1, Math.ceil(need[id] / b.isi - 0.04)) * b.h; }, 0);
+  function chooseCheap(w, options, d, used, carried){
+    const cw = computeWeek(w), base = needsOf(cw.count, cw.rice), porsi = S.set.porsi;
+    Object.keys(carried || {}).forEach(id => { base[id] = (base[id] || 0) - carried[id]; });
+    const basePay = packPay(base);
     const scored = options.map(ids => {
       if (ids.some(id => (used[id] || []).some(x => Math.abs(x - d) < 2) || (used[id] || []).length >= 2)) return null;
       const need = Object.assign({}, base);
@@ -403,6 +447,7 @@
     const used = {};
     const mark = (ids, d) => ids.forEach(id => { (used[id] = used[id] || []).push(d); });
     for (let d = 0; d < 7; d++) act.forEach(wt => { const sl = w.slot[slotKey(d, wt.id)]; if (sl && sl.r) mark(sl.r, d); });
+    const carried = startStock(wk, 0, new Map());
     let filled = 0;
     for (let d = 0; d < 7; d++) {
       act.forEach(wt => {
@@ -411,8 +456,8 @@
         let val;
         if (wt.id === 'pagi') val = { r: chooseCheap(w, D.HEMAT.pagi.map(x => [x]), -9, {}) };
         else if (wt.id === 'malam' && S.set.waktu.siang && d % 2 === 0 && slotFilled(w.slot[slotKey(d, 'siang')]) && !w.slot[slotKey(d, 'siang')].luar) val = { sisa: true };
-        else if (wt.id === 'malam' && (d === 3 || d === 5)) val = { r: chooseCheap(w, D.HEMAT.sekali.map(x => [x]), d, used) };
-        else val = { r: chooseCheap(w, pairs, d, used) };
+        else if (wt.id === 'malam' && (d === 3 || d === 5)) val = { r: chooseCheap(w, D.HEMAT.sekali.map(x => [x]), d, used, carried) };
+        else val = { r: chooseCheap(w, pairs, d, used, carried) };
         if (val.r) mark(val.r, d);
         w.slot[k] = val; filled++;
       });
@@ -551,14 +596,25 @@
     if (e.target.id === 'useAuto') { S.set.sumber = 'auto'; save(); renderBudget(shopping()); renderSummary(); }
   });
 
-  let editingPrice = null;
+  let editingPrice = null, editingSisa = null;
+  // Koreksi jumlah sisa di dapur pada awal minggu (satuan dasar bahan).
+  function sisaEditor(x){
+    const b = x.b;
+    return '<div class="price-edit sisa-edit"><span class="qty"><input class="se-in" inputmode="decimal" autocomplete="off" value="' + (x.have > TINY ? num1(x.have) : '') + '" placeholder="0" aria-label="Sisa ' + esc(b.n) + ' di dapur"><span class="unit">' + esc(b.s) + '</span></span>' +
+      '<button type="button" class="primary se-save">Simpan</button>' + (x.fixed ? '<button type="button" class="ghost se-auto">Hitung otomatis</button>' : '<button type="button" class="ghost se-cancel">Batal</button>') +
+      '<small>' + (x.carried > TINY ? 'Perkiraan dari minggu lalu ±' + esc(needLbl(x.carried, b.s)) + '. ' : '') + 'Isi jumlah yang benar-benar masih ada di dapur pada awal minggu ini.</small></div>';
+  }
   function shopRow(x){
     const b = x.b, buyTxt = x.packs > 1 ? x.packs + ' × ' + b.lbl : b.lbl;
     let html = '<div class="sitem' + (x.bought ? ' done' : '') + '" data-id="' + esc(x.id) + '">' +
       '<button type="button" class="check" role="checkbox" aria-checked="' + x.bought + '" aria-label="' + esc(b.n) + ' sudah di keranjang">' + CHECK + '</button>' +
       '<button type="button" class="sname" data-q="' + esc(b.q) + '">' + esc(b.n) + '</button>' +
       '<button type="button" class="sprice" aria-label="Ubah harga ' + esc(b.n) + '">' + rp(x.cost) + '</button>' +
-      '<span class="ssub">Beli ' + esc(buyTxt) + ' · butuh ±' + esc(needLbl(x.need, b.s)) + '<button type="button" class="link to-stok">sudah ada</button></span>';
+      '<span class="ssub">Beli ' + esc(buyTxt) + ' · butuh ±' + esc(needLbl(x.need, b.s)) +
+      (x.have > TINY ? '<span class="carry-tag">dikurangi sisa ±' + esc(needLbl(x.have, b.s)) + '</span>' : '') +
+      (durable(b) ? '<button type="button" class="link set-sisa">' + (x.have > TINY ? 'ubah sisa' : 'ada sisa?') + '</button>' : '') +
+      '<button type="button" class="link to-stok">sudah ada</button></span>';
+    if (editingSisa === x.id) html += sisaEditor(x);
     if (editingPrice === x.id) {
       html += '<div class="price-edit"><div class="money"><span>Rp</span><input class="pe-in" inputmode="numeric" autocomplete="off" value="' + fmt(b.h) + '" aria-label="Harga per kemasan ' + esc(b.n) + '"></div>' +
         '<button type="button" class="primary pe-save">Simpan</button><button type="button" class="ghost pe-cancel">Batal</button>' +
@@ -580,6 +636,15 @@
     pill.textContent = sh.buy.length ? nb + ' dari ' + sh.buy.length + ' di keranjang' : '';
     pill.className = 'pill' + (sh.buy.length && nb === sh.buy.length ? ' ok' : '');
     pill.hidden = !sh.buy.length;
+    $('#sisaBox').hidden = !sh.covered.length && !Object.keys(sh.leftover).length;
+    $('#sisaPill').textContent = String(sh.covered.length);
+    $('#sisaPill').hidden = !sh.covered.length;
+    $('#coverList').innerHTML = sh.covered.map(x => '<li class="item" data-id="' + esc(x.id) + '"><span>' + esc(x.b.n) + '<small>Butuh ±' + esc(needLbl(x.need, x.b.s)) + ' · sisa ±' + esc(needLbl(x.have, x.b.s)) + (x.fixed ? ' (dikoreksi)' : '') + '</small></span><button type="button" class="ghost set-sisa">Ubah sisa</button>' +
+      (editingSisa === x.id ? sisaEditor(x) : '') + '</li>').join('');
+    $('#coverHead').hidden = !sh.covered.length;
+    const lo = Object.keys(sh.leftover).map(id => bahan(id)).filter(Boolean).sort((a, b) => a.n.localeCompare(b.n, 'id'));
+    $('#leftNote').hidden = !lo.length;
+    $('#leftNote').innerHTML = lo.length ? '<strong>Perkiraan sisa untuk minggu depan:</strong> ' + lo.map(b => esc(b.n) + ' ±' + esc(needLbl(sh.leftover[b.id], b.s))).join(', ') + '. Sisa ini otomatis mengurangi daftar belanja minggu berikutnya.' : '';
     $('#stokBox').hidden = !sh.stok.length;
     $('#stokPill').textContent = String(sh.stok.length);
     $('#stokList').innerHTML = sh.stok.map(x => '<li class="item" data-id="' + esc(x.id) + '"><span>' + esc(x.b.n) + '<small>Butuh ±' + esc(needLbl(x.need, x.b.s)) + ' · kemasan ' + esc(x.b.lbl) + ' ' + rp(x.b.h) + '</small></span><button type="button" class="ghost to-buy">Perlu beli</button></li>').join('');
@@ -602,13 +667,32 @@
     }
     if (e.target.closest('.sname')) { copyText(e.target.closest('.sname').dataset.q, '“' + e.target.closest('.sname').dataset.q + '” disalin. Tempel di pencarian Astro atau GoMart.'); return; }
     if (e.target.closest('.to-stok')) { w.stok[id] = true; delete w.beli[id]; save(); renderShop(); toast(bahan(id).n + ' dipindahkan ke “Sudah ada di dapur”.'); return; }
-    if (e.target.closest('.sprice')) { editingPrice = editingPrice === id ? null : id; renderShop(); const inp = $('.pe-in'); if (inp) { bindMoney(inp, () => {}); inp.focus(); inp.select(); } return; }
+    if (e.target.closest('.set-sisa')) { editingSisa = editingSisa === id ? null : id; editingPrice = null; renderShop(); const inp = $('.se-in'); if (inp) inp.focus(); return; }
+    if (e.target.closest('.se-cancel')) { editingSisa = null; renderShop(); return; }
+    if (e.target.closest('.se-auto')) { delete w.awal[id]; editingSisa = null; save(); renderShop(); toast('Sisa ' + bahan(id).n + ' kembali dihitung otomatis.'); return; }
+    if (e.target.closest('.se-save')) { saveSisa(id, $('.se-in', row).value); return; }
+    if (e.target.closest('.sprice')) { editingPrice = editingPrice === id ? null : id; editingSisa = null; renderShop(); const inp = $('.pe-in'); if (inp) { bindMoney(inp, () => {}); inp.focus(); inp.select(); } return; }
     if (e.target.closest('.pe-cancel')) { editingPrice = null; renderShop(); return; }
     if (e.target.closest('.pe-save')) { setPrice(id, digits($('.pe-in').value)); editingPrice = null; renderShop(); toast('Harga ' + bahan(id).n + ' diperbarui.'); }
   });
+  function saveSisa(id, raw){
+    const v = String(raw).trim() === '' ? 0 : dec(raw);
+    W().awal[id] = v; editingSisa = null; save(); renderShop();
+    toast('Sisa ' + bahan(id).n + ' dicatat ±' + needLbl(v, bahan(id).s) + '.');
+  }
   $('#shopList').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.classList.contains('se-in')) { e.preventDefault(); saveSisa(e.target.closest('[data-id]').dataset.id, e.target.value); return; }
     if (e.key === 'Enter' && e.target.classList.contains('pe-in')) { e.preventDefault(); const row = e.target.closest('.sitem'); setPrice(row.dataset.id, digits(e.target.value)); editingPrice = null; renderShop(); }
   });
+  $('#coverList').addEventListener('click', (e) => {
+    const li = e.target.closest('[data-id]'); if (!li) return;
+    const id = li.dataset.id, w = W();
+    if (e.target.closest('.set-sisa')) { editingSisa = editingSisa === id ? null : id; renderShop(); const inp = $('#coverList .se-in'); if (inp) inp.focus(); return; }
+    if (e.target.closest('.se-cancel')) { editingSisa = null; renderShop(); return; }
+    if (e.target.closest('.se-auto')) { delete w.awal[id]; editingSisa = null; save(); renderShop(); return; }
+    if (e.target.closest('.se-save')) saveSisa(id, $('.se-in', li).value);
+  });
+  $('#coverList').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.classList.contains('se-in')) { e.preventDefault(); saveSisa(e.target.closest('[data-id]').dataset.id, e.target.value); } });
   $('#stokList').addEventListener('click', (e) => {
     const b = e.target.closest('.to-buy'); if (!b) return;
     const id = b.closest('[data-id]').dataset.id; W().stok[id] = false; save(); renderShop();
@@ -866,7 +950,7 @@
   function shiftWeek(n){
     writeNow();
     wk = ymd(addDays(parseYmd(wk), 7 * n));
-    editingPrice = null;
+    editingPrice = null; editingSisa = null;
     renderAll(true);
   }
   $('#prevW').addEventListener('click', () => shiftWeek(-1));

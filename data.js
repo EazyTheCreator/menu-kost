@@ -72,6 +72,23 @@ window.MENU_DATA = (function(){
     saus_tiram:   b('Saus tiram', 'bumbu', 'ml', 133, '133 ml', 10000, true)
   };
 
+  // Daya tahan perkiraan dalam hari: [tanpa kulkas, dengan kulkas]. beku: bisa disimpan lama di freezer.
+  // Angka ini sengaja konservatif dan hanya dipakai untuk peringatan layu serta perhitungan sisa kemasan.
+  const TAHAN = {
+    bawang_merah:[30,30], bawang_putih:[60,60], bombay:[30,30], cabai_merah:[4,10], cabai_rawit:[4,10],
+    tomat:[5,10], daun_bawang:[3,7], rempah:[5,14], kunyit:[21,30], jahe:[21,30], jeruk_nipis:[10,21],
+    bayam:[1,3], kangkung:[1,3], sawi:[2,4], kol:[5,14], wortel:[7,21], buncis:[3,7], kentang:[30,30],
+    labu_siam:[14,21], jagung:[3,5], toge:[1,2], terong:[4,7], timun:[5,7], sayur_sop:[2,4],
+    telur:[14,28], ayam:[1,3], dada_ayam:[1,3], tempe:[2,4], tahu:[1,3], kembung:[1,2], lele:[1,2],
+    sarden:[365,365], nugget:[1,3], beras:[180,180], minyak:[180,180], mi_instan:[180,180], mi_telur:[180,180],
+    roti:[4,7], santan:[180,180], terigu:[180,180], garam:[365,365], gula:[365,365], merica:[365,365],
+    kaldu:[365,365], kecap:[365,365], saus_tiram:[180,180]
+  };
+  const BEKU = ['ayam', 'dada_ayam', 'kembung', 'lele', 'nugget'];
+  // utuh: kemasan yang sudah dibuka tidak awet, sehingga hanya kemasan utuh yang dihitung sebagai sisa.
+  const UTUH = ['sarden', 'santan'];
+  Object.keys(BAHAN).forEach(id => { BAHAN[id].tahan = TAHAN[id] || [7, 14]; BAHAN[id].beku = BEKU.includes(id); BAHAN[id].utuh = UTUH.includes(id); });
+
   // jenis: lauk | sayur | sekali (sudah mengandung karbohidrat, tidak ditambah nasi otomatis)
   const r = (id, n, jenis, menit, bahan, catatan) => ({ id, n, jenis, menit, bahan, catatan: catatan || '' });
   const RESEP = [

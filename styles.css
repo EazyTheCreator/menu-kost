@@ -195,7 +195,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{opacity:.55;cursor:pointer
 .tag.ok{background:var(--good-soft);color:var(--good)}
 .tag.warn{background:var(--warn-soft);color:var(--warn)}
 .tag.bad{background:var(--danger-soft);color:var(--danger)}
-.items{grid-area:items;display:flex;flex-direction:column;gap:8px;min-width:0;margin-top:2px}
+.items{display:flex;flex-direction:column;gap:8px;min-width:0;margin-top:2px}
 .items:empty{display:none}
 .item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center;padding:8px 10px;background:var(--surface-2);border-radius:12px}
 @media (min-width:520px){.item{grid-template-columns:minmax(0,1fr) minmax(0,140px) auto}}
@@ -456,3 +456,12 @@ dialog.sheet::backdrop{background:rgba(20,12,50,.45);backdrop-filter:blur(3px);a
 }
 .slot,.sitem,.pitem,.rcard,.wchips button{-webkit-tap-highlight-color:transparent}
 .ring-txt b{font-size:1.05rem;letter-spacing:-.02em}
+
+/* Sisa kemasan */
+.carry-tag{color:var(--good);font-weight:700}
+.sisa-edit .qty{flex:1 1 140px;max-width:220px}
+.sisa-edit .qty .unit{padding:0 12px 0 4px;font-size:.84rem;font-weight:700;color:var(--muted)}
+.stok-list .item .price-edit{grid-column:1 / -1}
+#coverHead{margin:4px 0 0}
+#leftNote strong{color:var(--ink)}
+.guide-body ul.items{padding-left:0}

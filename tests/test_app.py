@@ -72,7 +72,7 @@ async def pick_opt(page, d, w, opt):
 async def sh(page):
     return await page.evaluate("""() => { const s = window.__menuKost.shopping();
       return { pay: s.pay, used: s.used, meals: s.cw.meals,
-               items: Object.fromEntries(s.items.map(x => [x.id, { need: x.need, packs: x.packs, cost: x.cost, stok: x.stok }])) }; }""")
+               items: Object.fromEntries(s.items.map(x => [x.id, { need: x.need, packs: x.packs, cost: x.cost, stok: x.stok, have: x.have }])) }; }""")
 
 
 async def num(page, sel):
@@ -266,6 +266,41 @@ async def test_week_tools_and_backup(b, url, tmp):
     await ctx.close()
 
 
+async def test_carry_over(b, url):
+    print("Sisa kemasan antarminggu")
+    ctx, page, errors = await fresh(b, url)
+    await pick(page, 0, "siang", ["telur_dadar"])
+    a = await sh(page)
+    check("minggu pertama membeli telur 1 kemasan", a["items"]["telur"]["packs"] == 1)
+    await page.click("#nextW")
+    await pick(page, 0, "siang", ["telur_dadar"])
+    s = await sh(page)
+    check("minggu kedua: telur cukup dari sisa 8 butir", s["items"]["telur"]["packs"] == 0 and abs(s["items"]["telur"]["have"] - 8) < 1e-9, s["items"]["telur"])
+    check("bawang merah cukup dari sisa", s["items"]["bawang_merah"]["packs"] == 0)
+    check("daun bawang tidak awet, tetap dibeli", s["items"]["daun_bawang"]["packs"] == 1)
+    check("total minggu kedua hanya daun bawang + cabai", s["pay"] == 3000 + 10000, s["pay"])
+    await page.click("#tabBelanja")
+    await page.click("#sisaBox summary")
+    check("bagian sisa kemasan menampilkan telur", "Telur ayam" in (await page.text_content("#coverList")))
+    await page.click('#coverList [data-id="telur"] .set-sisa')
+    await page.fill("#coverList .se-in", "0")
+    await page.click("#coverList .se-save")
+    s = await sh(page)
+    check("koreksi sisa 0 membuat telur dibeli lagi", s["items"]["telur"]["packs"] == 1, s["items"]["telur"])
+    await page.click('.sitem[data-id="telur"] .set-sisa')
+    await page.click(".sitem .se-auto")
+    s = await sh(page)
+    check("kembali ke hitungan otomatis", s["items"]["telur"]["packs"] == 0)
+    await page.click("#nextW")
+    await page.click("#nextW")
+    await page.click("#tabMenu")
+    await pick(page, 0, "siang", ["telur_dadar"])
+    s = await sh(page)
+    check("minggu kosong memutus rantai sisa", s["items"]["telur"]["packs"] == 1)
+    check("tanpa galat skrip", not errors, errors)
+    await ctx.close()
+
+
 async def main():
     srv, url = serve()
     tmp = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "tests"
@@ -275,6 +310,7 @@ async def main():
         await test_sisa_and_portions(b, url)
         await test_prices_and_copy(b, url)
         await test_budget(b, url)
+        await test_carry_over(b, url)
         await test_week_tools_and_backup(b, url, tmp)
         await b.close()
     srv.shutdown()

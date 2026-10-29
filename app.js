@@ -63,7 +63,7 @@
   /* ---------- Penyimpanan ---------- */
   const defaults = () => ({
     v: 1,
-    set: { porsi: 1, waktu: { pagi: false, siang: true, malam: true }, beras: 100, sumber: 'auto', manual: 0, hitung: {}, kulkas: 'tidak', toko: 'online', markup: 20 },
+    set: { porsi: 1, waktu: { pagi: false, siang: true, malam: true }, beras: 100, sumber: 'auto', manual: 0, hitung: {}, kulkas: 'tidak', toko: 'online', markup: 20, trip: 1 },
     harga: {},      // id bahan bawaan -> { h, isi, t, prev }
     bahan: {},      // bahan buatan sendiri: id -> { n, k, s, isi, lbl, h, stok, q, t, prev }
     resep: [],      // resep buatan sendiri
@@ -81,6 +81,7 @@
     s.set.hitung = (set.hitung && typeof set.hitung === 'object') ? set.hitung : {};
     s.set.kulkas = ['tidak', 'kulkas', 'freezer'].includes(set.kulkas) ? set.kulkas : 'tidak';
     s.set.toko = set.toko === 'pasar' ? 'pasar' : 'online';
+    s.set.trip = Number(set.trip) === 2 ? 2 : 1;
     s.set.markup = Number.isFinite(Number(set.markup)) ? Math.max(0, Math.min(100, Math.round(Number(set.markup)))) : 20;
     s.harga = (o.harga && typeof o.harga === 'object') ? o.harga : {};
     s.bahan = (o.bahan && typeof o.bahan === 'object') ? o.bahan : {};
@@ -225,6 +226,29 @@
   // Rencana belanja satu minggu. Sisa kemasan bahan awet dari minggu sebelumnya (berantai, maksimal
   // enam minggu ke belakang) mengurangi kebutuhan sebelum dibulatkan ke kemasan utuh.
   const TINY = 1e-6;
+  // Jadwal belanja: sekali (Senin) atau dua kali (Senin & Kamis). Bahan mudah layu yang dipakai setelah
+  // daya tahannya habis dibeli pada belanja kedua; bahan awet selalu dibeli pada belanja pertama.
+  const TRIPS = () => S.set.trip === 2 ? [0, 3] : [0];
+  const TRIP_NAME = (t) => HARI[TRIPS()[t]];
+  function tripFor(b, d, stok){
+    if (stok || durable(b)) return 0;
+    const trips = TRIPS();
+    if (d - trips[0] <= shelf(b)) return 0;
+    let t = 0;
+    trips.forEach((td, i) => { if (td <= d) t = i; });
+    return t;
+  }
+  const isStok = (w, id, b) => (w && id in w.stok) ? !!w.stok[id] : b.stok;
+  // Bahan yang kemungkinan sudah layu saat dimasak pada hari d.
+  function staleOn(ids, d, w){
+    const out = new Set();
+    ids.forEach(rid => { const r = resepById(rid); if (!r) return; r.bahan.forEach(([bid]) => {
+      const b = bahan(bid); if (!b || isStok(w, bid, b) || durable(b)) return;
+      const t = tripFor(b, d, false), age = d - TRIPS()[t];
+      if (age > shelf(b)) out.add(b.n);
+    }); });
+    return [...out];
+  }
   function planWeek(k, depth, memo){
     if (memo.has(k)) return memo.get(k);
     const w = peekWeek(k);
@@ -232,24 +256,34 @@
     const carried = startStock(k, depth, memo);
     const start = Object.assign({}, carried);
     if (w) Object.keys(w.awal).forEach(id => { start[id] = Math.max(0, Number(w.awal[id]) || 0); });
-    const leftover = {};
-    const items = Object.keys(need).map(id => {
-      const b = bahan(id);
-      const stok = (w && id in w.stok) ? !!w.stok[id] : b.stok;
-      const keep = !stok && durable(b);
+    // Kebutuhan dibagi per jadwal belanja berdasarkan hari dimasak.
+    const byTrip = TRIPS().map(() => ({})), daysOf = TRIPS().map(() => ({}));
+    for (let d = 0; d < 7; d++) {
+      const nd = needsOf(cw.perDay[d], cw.riceDay[d]);
+      Object.keys(nd).forEach(id => {
+        const b = bahan(id), t = tripFor(b, d, isStok(w, id, b));
+        byTrip[t][id] = (byTrip[t][id] || 0) + nd[id];
+        (daysOf[t][id] = daysOf[t][id] || new Set()).add(d);
+      });
+    }
+    const leftover = {}, items = [];
+    byTrip.forEach((nt, t) => Object.keys(nt).forEach(id => {
+      const b = bahan(id), stok = isStok(w, id, b), q = nt[id];
+      const keep = t === 0 && !stok && durable(b);
       const have = keep ? (start[id] || 0) : 0;
-      const net = Math.max(0, need[id] - have);
+      const net = Math.max(0, q - have);
       const packs = net > TINY ? Math.max(1, Math.ceil(net / b.isi - 0.04)) : 0;
       if (keep) {
         // Bahan satuan (butir, kaleng, kotak) hanya dihitung utuh; kemasan kaleng atau kotak yang sudah dibuka tidak awet.
-        let rest = have + packs * b.isi - need[id];
+        let rest = have + packs * b.isi - q;
         if (b.s !== 'g' && b.s !== 'ml') rest = Math.floor(rest + 1e-9);
         if (b.utuh) rest = Math.floor(rest / b.isi + 1e-9) * b.isi;
         if (rest > b.isi * 0.02) leftover[id] = rest;
       }
-      return { id, b, need: need[id], have, carried: carried[id] || 0, fixed: !!(w && id in w.awal), packs,
-        cost: stok ? 0 : packs * b.h, used: need[id] / b.isi * b.h, stok, bought: !!(w && w.beli[id]) };
-    });
+      const key = t ? id + '@' + t : id;
+      items.push({ id, key, trip: t, days: [...daysOf[t][id]].sort(), b, need: q, have, carried: carried[id] || 0, fixed: !!(w && id in w.awal), packs,
+        cost: stok ? 0 : packs * b.h, used: q / b.isi * b.h, stok, bought: !!(w && w.beli[key]) });
+    }));
     // Sisa bahan awet yang tidak dipakai minggu ini tetap tersimpan untuk minggu berikutnya.
     Object.keys(start).forEach(id => { const b = bahan(id); if (!(id in need) && b && durable(b) && start[id] > TINY) leftover[id] = start[id]; });
     const res = { w, cw, need, items, leftover };
@@ -271,7 +305,8 @@
     const covered = items.filter(x => !x.stok && x.packs === 0);
     const pay = buy.reduce((s, x) => s + x.cost, 0) + extra.reduce((s, x) => s + x.h, 0);
     const used = items.reduce((s, x) => s + x.used, 0);
-    return { cw: p.cw, items, buy, covered, stok: items.filter(x => x.stok), extra, pay, used, leftover: p.leftover };
+    const stokSeen = new Set(), stok = items.filter(x => x.stok && !stokSeen.has(x.id) && stokSeen.add(x.id));
+    return { cw: p.cw, items, buy, covered, stok, extra, pay, used, leftover: p.leftover };
   }
 
   /* ---------- Anggaran dari Amplop Gajian ---------- */
@@ -366,6 +401,8 @@
     $('#porsiVal').textContent = String(S.set.porsi);
     $('#porsiMinus').disabled = S.set.porsi <= 1;
     $('#porsiPlus').disabled = S.set.porsi >= 8;
+    $$('#kulkasSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === S.set.kulkas)));
+    $$('#tripSet button').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.v) === S.set.trip)));
   }
   function sisaSource(d, wid){
     // Mencari slot masak terakhir sebelum slot ini (untuk label "Sisa …").
@@ -410,6 +447,11 @@
             (t ? '' : '<span class="slot-warn">Belum ada masakan sebelumnya di minggu ini, jadi slot ini tidak dihitung.</span>');
         } else if (sl && sl.r && sl.r.length) {
           body = '<div class="dishes">' + sl.r.map(id => { const r = resepById(id); return r ? '<span class="dish" style="--tone:' + JENIS_TONE[r.jenis] + '"><i></i><span>' + esc(r.n) + '</span></span>' : ''; }).join('') + '</div>';
+          const stale = staleOn(sl.r, d, w);
+          if (stale.length) {
+            const t = HARI[TRIPS()[TRIPS().filter(x => x <= d).length - 1]];
+            body += '<span class="slot-warn">' + esc(stale.join(', ')) + ' mungkin sudah layu (dibeli ' + t + (S.set.kulkas === 'tidak' ? ', tanpa kulkas' : '') + '). ' + (S.set.trip === 1 && d >= 3 ? 'Pertimbangkan belanja dua kali seminggu.' : 'Pindahkan ke awal minggu atau ganti menu.') + '</span>';
+          }
         } else body = '<span class="slot-empty">+ Pilih menu</span>';
         html += '<button type="button" class="slot' + (slotFilled(sl) ? ' filled' : '') + '" data-d="' + d + '" data-w="' + wt.id + '" aria-label="' + HARI[d] + ' ' + wt.n + ': ubah menu">' +
           '<span class="ico sm" style="--tone:' + wt.tone + '">' + svg(wt.ico) + '</span><span class="slot-body"><span class="slot-lbl">' + wt.n + '</span>' + body + '</span></button>';
@@ -428,6 +470,8 @@
     S.set.waktu[b.dataset.w] = !S.set.waktu[b.dataset.w];
     save(); renderSetup(); renderDays(true); renderSummary();
   });
+  $('#kulkasSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; S.set.kulkas = b.dataset.v; save(); renderSetup(); renderDays(); renderSummary(); });
+  $('#tripSet').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; S.set.trip = Number(b.dataset.v); tripSel = 0; save(); renderSetup(); renderDays(); renderSummary(); });
   function stepPorsi(dv){ S.set.porsi = Math.min(8, Math.max(1, S.set.porsi + dv)); save(); renderSetup(); renderDays(); renderSummary(); }
   $('#porsiMinus').addEventListener('click', () => stepPorsi(-1));
   $('#porsiPlus').addEventListener('click', () => stepPorsi(1));
@@ -443,7 +487,8 @@
       if (ids.some(id => (used[id] || []).some(x => Math.abs(x - d) < 2) || (used[id] || []).length >= 2)) return null;
       const need = Object.assign({}, base);
       ids.forEach(id => { const r = resepById(id); if (r) r.bahan.forEach(([bid, q]) => { need[bid] = (need[bid] || 0) + q * porsi * 2; }); });
-      return { ids, cost: packPay(need) - basePay };
+      const layu = d >= 0 ? staleOn(ids, d, w).length : 0;   // hindari bahan layu: penalti setara satu kemasan lauk
+      return { ids, cost: packPay(need) - basePay + layu * 20000 };
     }).filter(Boolean);
     if (!scored.length) return options[Math.floor(Math.random() * options.length)];
     scored.sort((a, b) => a.cost - b.cost);
@@ -613,7 +658,8 @@
     if (e.target.id === 'useAuto') { S.set.sumber = 'auto'; save(); renderBudget(shopping()); renderSummary(); }
   });
 
-  let editingPrice = null, editingSisa = null;
+  let editingPrice = null, editingSisa = null, tripSel = 0;
+  $('#tripSeg').addEventListener('click', (e) => { const b = e.target.closest('button[data-t]'); if (!b) return; tripSel = Number(b.dataset.t); editingPrice = editingSisa = null; renderShop(true); });
   // Koreksi jumlah sisa di dapur pada awal minggu (satuan dasar bahan).
   function sisaEditor(x){
     const b = x.b;
@@ -623,11 +669,12 @@
   }
   function shopRow(x){
     const b = x.b, buyTxt = x.packs > 1 ? x.packs + ' × ' + b.lbl : b.lbl;
-    let html = '<div class="sitem' + (x.bought ? ' done' : '') + '" data-id="' + esc(x.id) + '">' +
+    let html = '<div class="sitem' + (x.bought ? ' done' : '') + '" data-id="' + esc(x.id) + '" data-key="' + esc(x.key) + '">' +
       '<button type="button" class="check" role="checkbox" aria-checked="' + x.bought + '" aria-label="' + esc(b.n) + ' sudah di keranjang">' + CHECK + '</button>' +
       '<button type="button" class="sname" data-q="' + esc(b.q) + '">' + esc(b.n) + '</button>' +
       '<button type="button" class="sprice" aria-label="Ubah harga ' + esc(b.n) + '">' + rp(x.cost) + '</button>' +
       '<span class="ssub">Beli ' + esc(buyTxt) + ' · butuh ±' + esc(needLbl(x.need, b.s)) +
+      (!durable(b) && x.days.length ? '<span class="days-tag">untuk ' + esc(x.days.map(d => HARI[d].slice(0, 3)).join(', ')) + '</span>' : '') +
       (x.have > TINY ? '<span class="carry-tag">dikurangi sisa ±' + esc(needLbl(x.have, b.s)) + '</span>' : '') +
       (durable(b) ? '<button type="button" class="link set-sisa">' + (x.have > TINY ? 'ubah sisa' : 'ada sisa?') + '</button>' : '') +
       '<button type="button" class="link to-stok">sudah ada</button></span>';
@@ -646,13 +693,21 @@
     $('#shopEmpty').hidden = has;
     $('#shopActions').hidden = !has;
     $('.shop-tip').hidden = !sh.buy.length;
-    const groups = D.KAT.map(k => ({ k, xs: sh.buy.filter(x => (x.b.k || 'lain') === k.id) })).filter(g => g.xs.length);
-    $('#shopList').innerHTML = groups.map(g => '<section class="sgrp"><h3>' + esc(g.k.n) + '<small>' + rp(g.xs.reduce((s, x) => s + x.cost, 0)) + '</small></h3>' + g.xs.map(shopRow).join('') + '</section>').join('');
-    const nb = sh.buy.filter(x => x.bought).length;
+    const multi = TRIPS().length > 1;
+    if (tripSel >= TRIPS().length) tripSel = 0;
+    const ts = $('#tripSeg');
+    ts.hidden = !multi;
+    if (multi) ts.innerHTML = TRIPS().map((d, t) => { const tot = sh.buy.filter(x => x.trip === t).reduce((a, x) => a + x.cost, 0) + (t === 0 ? sh.extra.reduce((a, x) => a + x.h, 0) : 0);
+      return '<button type="button" data-t="' + t + '" aria-pressed="' + (t === tripSel) + '"><b>Belanja ' + HARI[d] + '</b><small>' + rp(tot) + '</small></button>'; }).join('');
+    const vis = multi ? sh.buy.filter(x => x.trip === tripSel) : sh.buy;
+    const groups = D.KAT.map(k => ({ k, xs: vis.filter(x => (x.b.k || 'lain') === k.id) })).filter(g => g.xs.length);
+    $('#shopList').innerHTML = groups.length ? groups.map(g => '<section class="sgrp"><h3>' + esc(g.k.n) + '<small>' + rp(g.xs.reduce((s, x) => s + x.cost, 0)) + '</small></h3>' + g.xs.map(shopRow).join('') + '</section>').join('')
+      : (sh.buy.length ? '<p class="note">Tidak ada yang perlu dibeli pada belanja ' + TRIP_NAME(tripSel) + '.</p>' : '');
+    const nb = vis.filter(x => x.bought).length;
     const pill = $('#cartPill');
-    pill.textContent = sh.buy.length ? nb + ' dari ' + sh.buy.length + ' di keranjang' : '';
-    pill.className = 'pill' + (sh.buy.length && nb === sh.buy.length ? ' ok' : '');
-    pill.hidden = !sh.buy.length;
+    pill.textContent = vis.length ? nb + ' dari ' + vis.length + ' di keranjang' : '';
+    pill.className = 'pill' + (vis.length && nb === vis.length ? ' ok' : '');
+    pill.hidden = !vis.length;
     $('#sisaBox').hidden = !sh.covered.length && !Object.keys(sh.leftover).length;
     $('#sisaPill').textContent = String(sh.covered.length);
     $('#sisaPill').hidden = !sh.covered.length;
@@ -677,14 +732,14 @@
   }
   $('#shopList').addEventListener('click', (e) => {
     const row = e.target.closest('.sitem'); if (!row) return;
-    const id = row.dataset.id, w = W();
+    const id = row.dataset.id, key = row.dataset.key || id, w = W();
     if (e.target.closest('.check')) {
-      w.beli[id] = !w.beli[id]; if (!w.beli[id]) delete w.beli[id];
+      w.beli[key] = !w.beli[key]; if (!w.beli[key]) delete w.beli[key];
       save(); renderShop();
       return;
     }
     if (e.target.closest('.sname')) { copyText(e.target.closest('.sname').dataset.q, '“' + e.target.closest('.sname').dataset.q + '” disalin. Tempel di pencarian Astro atau GoMart.'); return; }
-    if (e.target.closest('.to-stok')) { w.stok[id] = true; delete w.beli[id]; save(); renderShop(); toast(bahan(id).n + ' dipindahkan ke “Sudah ada di dapur”.'); return; }
+    if (e.target.closest('.to-stok')) { w.stok[id] = true; delete w.beli[id]; delete w.beli[id + '@1']; save(); renderShop(); toast(bahan(id).n + ' dipindahkan ke “Sudah ada di dapur”.'); return; }
     if (e.target.closest('.set-sisa')) { editingSisa = editingSisa === id ? null : id; editingPrice = null; renderShop(); const inp = $('.se-in'); if (inp) inp.focus(); return; }
     if (e.target.closest('.se-cancel')) { editingSisa = null; renderShop(); return; }
     if (e.target.closest('.se-auto')) { delete w.awal[id]; editingSisa = null; save(); renderShop(); toast('Sisa ' + bahan(id).n + ' kembali dihitung otomatis.'); return; }
@@ -732,17 +787,19 @@
   $('#extraPrice').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addExtra(); } });
 
   function listText(){
-    const sh = shopping(), lines = [];
-    const notYet = sh.buy.filter(x => !x.bought), some = notYet.length && notYet.length < sh.buy.length;
-    const rows = some ? notYet : sh.buy;
-    lines.push('Daftar belanja ' + weekLabel(wk, true) + (some ? ' (belum dibeli)' : ''));
+    const sh = shopping(), lines = [], multi = TRIPS().length > 1;
+    const pool = multi ? sh.buy.filter(x => x.trip === tripSel) : sh.buy;
+    const notYet = pool.filter(x => !x.bought), some = notYet.length && notYet.length < pool.length;
+    const rows = some ? notYet : pool;
+    const extra = !multi || tripSel === 0 ? sh.extra : [];
+    lines.push('Daftar belanja ' + (multi ? HARI[TRIPS()[tripSel]] + ', ' : '') + weekLabel(wk, true) + (some ? ' (belum dibeli)' : ''));
     D.KAT.forEach(k => {
       const xs = rows.filter(x => (x.b.k || 'lain') === k.id); if (!xs.length) return;
       lines.push('', k.n.toUpperCase());
       xs.forEach(x => lines.push('- ' + x.b.n + ' — ' + (x.packs > 1 ? x.packs + ' × ' + x.b.lbl : x.b.lbl) + ' (±' + rp(x.cost) + ')'));
     });
-    if (sh.extra.length) { lines.push('', 'LAINNYA'); sh.extra.forEach(x => lines.push('- ' + x.n + (x.h ? ' (±' + rp(x.h) + ')' : ''))); }
-    const total = rows.reduce((s, x) => s + x.cost, 0) + sh.extra.reduce((s, x) => s + x.h, 0);
+    if (extra.length) { lines.push('', 'LAINNYA'); extra.forEach(x => lines.push('- ' + x.n + (x.h ? ' (±' + rp(x.h) + ')' : ''))); }
+    const total = rows.reduce((s, x) => s + x.cost, 0) + extra.reduce((s, x) => s + x.h, 0);
     lines.push('', 'Perkiraan total: ' + rp(total));
     return lines.join('\n');
   }
@@ -1028,7 +1085,7 @@
   function shiftWeek(n){
     writeNow();
     wk = ymd(addDays(parseYmd(wk), 7 * n));
-    editingPrice = null; editingSisa = null;
+    editingPrice = null; editingSisa = null; tripSel = 0;
     renderAll(true);
   }
   $('#prevW').addEventListener('click', () => shiftWeek(-1));

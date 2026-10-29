@@ -471,3 +471,16 @@ dialog.sheet::backdrop{background:rgba(20,12,50,.45);backdrop-filter:blur(3px);a
 .toko{gap:10px}
 .toko h2{font-size:1rem}
 #markupVal{min-width:44px;font-size:.98rem}
+
+/* Kesegaran & jadwal belanja */
+.set-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px;font-size:.86rem;font-weight:700}
+.set-row .mini-seg{flex-wrap:wrap}
+.days-tag{color:var(--accent);font-weight:600}
+.slot-warn{display:block;line-height:1.35}
+.trip-seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.trip-seg button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;border:2px solid var(--line);background:var(--surface);border-radius:var(--r-sm);padding:10px 14px;box-shadow:var(--shadow);text-align:left;transition:border-color .2s, background .2s, transform .12s}
+.trip-seg button b{font-size:.9rem}
+.trip-seg button small{font-family:var(--f-display);font-weight:800;font-size:1rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.trip-seg button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.trip-seg button[aria-pressed="true"] small{color:var(--accent)}
+.trip-seg button:active{transform:scale(.98)}

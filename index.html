@@ -80,7 +80,17 @@
         </div>
       </div>
       <div class="field">
-        <span class="flabel"><span class="step">3</span>Isi menu seminggu</span>
+        <span class="flabel"><span class="step">3</span>Penyimpanan dan jadwal belanja</span>
+        <div class="set-row"><span id="kulkasLbl">Kulkas</span>
+          <div class="mini-seg" id="kulkasSeg" role="group" aria-labelledby="kulkasLbl"><button type="button" data-v="tidak" aria-pressed="true">Tidak ada</button><button type="button" data-v="kulkas" aria-pressed="false">Ada</button><button type="button" data-v="freezer" aria-pressed="false">Ada + freezer</button></div>
+        </div>
+        <div class="set-row"><span id="tripLbl">Belanja</span>
+          <div class="mini-seg" id="tripSet" role="group" aria-labelledby="tripLbl"><button type="button" data-v="1" aria-pressed="true">Sekali (Senin)</button><button type="button" data-v="2" aria-pressed="false">Dua kali (Senin &amp; Kamis)</button></div>
+        </div>
+        <small class="fhint">Dipakai untuk memperkirakan bahan yang mungkin layu sebelum dimasak. Dengan belanja dua kali, sayur daun dan lauk segar untuk akhir minggu dibeli hari Kamis.</small>
+      </div>
+      <div class="field">
+        <span class="flabel"><span class="step">4</span>Isi menu seminggu</span>
         <small class="fhint">Ketuk kotak waktu makan untuk memilih menu. Pilih <em>Sisa masakan</em> bila Anda masak sekali untuk dua kali makan, sehingga bahannya dihitung dua porsi.</small>
         <div class="row-actions">
           <button type="button" class="ghost accent" id="autoFill">Isi otomatis menu hemat</button>
@@ -105,6 +115,7 @@
       <button type="button" class="ghost" id="shareList" hidden>Bagikan</button>
     </div>
     <small class="fhint shop-tip">Ketuk nama bahan untuk menyalin kata kuncinya, lalu tempel di pencarian Astro atau GoMart. Centang bahan yang sudah masuk keranjang; ketuk harga untuk mencatat harga sebenarnya.</small>
+    <div class="trip-seg" id="tripSeg" role="group" aria-label="Pilih jadwal belanja" hidden></div>
     <div class="shop" id="shopList"></div>
 
     <details class="guide" id="sisaBox">

@@ -456,12 +456,22 @@
         html += '<button type="button" class="slot' + (slotFilled(sl) ? ' filled' : '') + '" data-d="' + d + '" data-w="' + wt.id + '" aria-label="' + HARI[d] + ' ' + wt.n + ': ubah menu">' +
           '<span class="ico sm" style="--tone:' + wt.tone + '">' + svg(wt.ico) + '</span><span class="slot-body"><span class="slot-lbl">' + wt.n + '</span>' + body + '</span></button>';
       });
+      const cookIds = Object.keys(cw.perDay[d]).filter(id => resepById(id));
+      if (cookIds.length) html += '<button type="button" class="link day-cook" data-d="' + d + '">Cara masak hari ini (' + cookIds.length + ' menu)</button>';
       html += '</li>';
     }
     list.innerHTML = html;
     if (animate) flow(list);
   }
   $('#dayList').addEventListener('click', (e) => {
+    const c = e.target.closest('.day-cook');
+    if (c) {
+      const d = Number(c.dataset.d), cw = computeWeek(peekWeek(wk)), date = addDays(parseYmd(wk), d);
+      const entries = Object.keys(cw.perDay[d]).filter(id => resepById(id)).map(id => ({ id, porsi: cw.perDay[d][id] }));
+      const forSisa = entries.some(x => x.porsi > S.set.porsi);
+      openDetail(entries, 'Masak ' + HARI[d], date.getDate() + ' ' + BULAN[date.getMonth()] + (forSisa ? ' · porsi sudah termasuk untuk sisa masakan' : ''), false);
+      return;
+    }
     const b = e.target.closest('.slot'); if (!b) return;
     openPicker(Number(b.dataset.d), b.dataset.w);
   });
@@ -962,6 +972,51 @@
     renderPrices();
   });
 
+  /* ---------- Cara masak ---------- */
+  // Takaran dapur: siung, sendok teh, sendok makan, dan pecahan ¼ agar mudah dipakai saat memasak.
+  function frac(v){
+    if (v >= 5) return String(Math.round(v));
+    const step = v >= 2 ? 0.5 : 0.25, q = Math.max(0.25, Math.round(v / step) * step), w = Math.floor(q), f = q - w;
+    const sym = { 0.25:'¼', 0.5:'½', 0.75:'¾' }[f] || '';
+    return (w ? String(w) : '') + sym || '¼';
+  }
+  function kitchenQty(b, v){
+    const t = D.TAKARAN[b.id];
+    if (t) return frac(v / t[0]) + ' ' + t[1];
+    if (b.s === 'ml') return v < 7.5 ? frac(v / 5) + ' sdt' : v <= 60 ? frac(v / 15) + ' sdm' : Math.round(v / 10) * 10 + ' ml';
+    if (b.s === 'g') return v >= 1000 ? num1(v / 1000) + ' kg' : (v >= 50 ? Math.round(v / 10) * 10 : Math.round(v)) + ' g';
+    return frac(v) + ' ' + b.s;
+  }
+  let detailState = null;
+  function openDetail(entries, title, sub, adjustable){
+    detailState = { entries, adjustable };
+    $('#dtTitle').textContent = title;
+    $('#dtSub').textContent = sub || '';
+    $('#dtPorsiRow').hidden = !adjustable;
+    renderDetail();
+    const dlg = $('#detail');
+    if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+    $('#dtBody').scrollTop = 0;
+  }
+  function renderDetail(){
+    if (!detailState) return;
+    if (detailState.adjustable) $('#dtPorsi').textContent = String(detailState.entries[0].porsi);
+    $('#dtBody').innerHTML = detailState.entries.map(({ id, porsi }) => {
+      const r = resepById(id); if (!r) return '';
+      const bh = r.bahan.map(([bid, q]) => { const b = bahan(bid); return b ? '<li><span>' + esc(b.n.replace(/ \(.*\)$/, '')) + '</span><b>' + esc(kitchenQty(b, q * porsi)) + '</b></li>' : ''; }).join('');
+      const steps = (r.langkah || []).map(x => '<li>' + esc(x) + '</li>').join('');
+      return '<article class="cook"><div class="cook-head" style="--tone:' + JENIS_TONE[r.jenis] + '"><span class="ico sm">' + svg(r.jenis === 'sayur' ? 'leaf' : r.jenis === 'sekali' ? 'bowl' : 'pot') + '</span><div><h3>' + esc(r.n) + '</h3><small>' + porsi + ' porsi' + (r.menit ? ' · ±' + r.menit + ' menit' : '') + (r.jenis !== 'sekali' ? ' · sajikan dengan nasi' : '') + '</small></div></div>' +
+        '<h4>Bahan</h4><ul class="cook-bahan">' + bh + '</ul>' +
+        (steps ? '<h4>Cara memasak</h4><ol class="cook-steps">' + steps + '</ol>' : '<p class="fhint">Belum ada langkah memasak. Tambahkan lewat <em>Ubah</em> di tab Resep.</p>') +
+        (r.catatan ? '<p class="rnote">' + esc(r.catatan) + '</p>' : '') + '</article>';
+    }).join('');
+    flow($('#dtBody'));
+  }
+  $('#dtMinus').addEventListener('click', () => { const e0 = detailState.entries[0]; e0.porsi = Math.max(1, e0.porsi - 1); renderDetail(); });
+  $('#dtPlus').addEventListener('click', () => { const e0 = detailState.entries[0]; e0.porsi = Math.min(8, e0.porsi + 1); renderDetail(); });
+  $('#dtClose').addEventListener('click', () => $('#detail').close());
+  $('#detail').addEventListener('click', (e) => { if (e.target === e.currentTarget) $('#detail').close(); });
+
   /* ---------- Tab Resep ---------- */
   let resepFilter = '';
   function renderRecipes(animate){
@@ -974,7 +1029,7 @@
         '<div class="rmeta"><span class="tag ' + r.jenis + '">' + JENIS[r.jenis] + '</span>' + (r.own ? '<span class="tag own">Resep sendiri</span>' : '') + (r.menit ? '<span>' + r.menit + ' menit</span>' : '') + '</div></div>' +
         '<span class="rcost" title="Biaya per porsi">' + rpE(resepCost(r)) + '</span></div>' +
         '<p class="rbahan">' + esc(names.join(', ')) + '</p>' + (r.catatan ? '<p class="rnote">' + esc(r.catatan) + '</p>' : '') +
-        '<div class="ractions">' + (r.own ? '<button type="button" class="ghost r-edit">Ubah</button><button type="button" class="ghost r-del">Hapus</button>' : '<button type="button" class="ghost r-copy">Salin &amp; ubah</button>') + '</div></li>';
+        '<div class="ractions"><button type="button" class="ghost accent r-cook">Cara masak</button>' + (r.own ? '<button type="button" class="ghost r-edit">Ubah</button><button type="button" class="ghost r-del">Hapus</button>' : '<button type="button" class="ghost r-copy">Salin &amp; ubah</button>') + '</div></li>';
     }).join('');
     if (animate) flow($('#recipeList'));
   }
@@ -982,6 +1037,7 @@
   $('#recipeList').addEventListener('click', (e) => {
     const card = e.target.closest('.rcard'); if (!card) return;
     const r = resepById(card.dataset.id); if (!r) return;
+    if (e.target.closest('.r-cook')) openDetail([{ id: r.id, porsi: S.set.porsi }], r.n, JENIS[r.jenis] + (r.menit ? ' · ' + r.menit + ' menit' : ''), true);
     if (e.target.closest('.r-edit')) openEditor(r, false);
     if (e.target.closest('.r-copy')) openEditor(r, true);
     if (e.target.closest('.r-del')) {
@@ -1006,6 +1062,7 @@
     $('#edName').value = r ? (asCopy ? r.n + ' (versi saya)' : r.n) : '';
     $('#edMenit').value = r && r.menit ? String(r.menit) : '';
     $('#edNote').value = r ? r.catatan || '' : '';
+    $('#edSteps').value = r && r.langkah ? r.langkah.join('\n') : '';
     $('#edMsg').textContent = '';
     renderEditor();
     const dlg = $('#editor');
@@ -1044,7 +1101,8 @@
     if (!n) { m.textContent = 'Isi nama menu.'; $('#edName').focus(); return; }
     if (!items.length) { m.textContent = 'Tambahkan minimal satu bahan beserta jumlahnya.'; return; }
     const merged = {}; items.forEach(([id, q]) => { merged[id] = (merged[id] || 0) + q; });
-    const rec = { id: ed.id || 'own_' + newId(), n, jenis: ed.jenis, menit: parseInt($('#edMenit').value, 10) || 0, bahan: Object.keys(merged).map(id => [id, merged[id]]), catatan: $('#edNote').value.trim() };
+    const rec = { id: ed.id || 'own_' + newId(), n, jenis: ed.jenis, menit: parseInt($('#edMenit').value, 10) || 0, bahan: Object.keys(merged).map(id => [id, merged[id]]), catatan: $('#edNote').value.trim(),
+      langkah: $('#edSteps').value.split('\n').map(x => x.replace(/^\s*(\d+[.)]|-|•)\s*/, '').trim()).filter(Boolean).slice(0, 20) };
     const i = S.resep.findIndex(x => x.id === rec.id);
     if (i >= 0) S.resep[i] = rec; else S.resep.push(rec);
     save(); $('#editor').close();

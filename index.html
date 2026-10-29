@@ -296,10 +296,26 @@
     <ul class="items" id="edBahan"></ul>
     <button type="button" class="link" id="edAddBahan">+ Tambah bahan</button>
   </div>
+  <div class="field"><label for="edSteps">Cara memasak <span class="opt">(satu langkah per baris)</span></label><textarea class="plain steps-in" id="edSteps" rows="4" placeholder="Tumis bawang hingga harum.&#10;Masukkan sayur dan sedikit air.&#10;Bumbui, lalu angkat."></textarea></div>
   <div class="field"><label for="edNote">Catatan <span class="opt">(opsional)</span></label><input class="plain" id="edNote" autocomplete="off"></div>
   <p class="fhint" id="edCost"></p>
   <button type="button" class="primary" id="edSave">Simpan resep</button>
   <p class="form-msg" id="edMsg" role="status"></p>
+</dialog>
+
+<!-- Cara masak -->
+<dialog class="sheet" id="detail" aria-labelledby="dtTitle">
+  <div class="sheet-head">
+    <div><h2 id="dtTitle">Cara masak</h2><small id="dtSub" class="fhint"></small></div>
+    <button type="button" class="ghost" id="dtClose">Tutup</button>
+  </div>
+  <div class="wk-row" id="dtPorsiRow">
+    <span id="dtPorsiLbl" class="flabel">Porsi</span>
+    <div class="stepper" role="group" aria-labelledby="dtPorsiLbl">
+      <button type="button" id="dtMinus" aria-label="Kurangi porsi">−</button><b id="dtPorsi" aria-live="polite">1</b><button type="button" id="dtPlus" aria-label="Tambah porsi">+</button>
+    </div>
+  </div>
+  <div class="cook-list" id="dtBody"></div>
 </dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>

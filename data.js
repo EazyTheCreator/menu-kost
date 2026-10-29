@@ -157,6 +157,46 @@ window.MENU_DATA = (function(){
       [['roti',2],['telur',1],['minyak',5]])
   ];
 
+  // Cara memasak singkat. Takaran mengikuti daftar bahan resep; garam dan gula disesuaikan selera.
+  const LANGKAH = {
+    telur_dadar: ['Iris tipis bawang merah, daun bawang, dan cabai rawit.', 'Kocok telur bersama irisan bumbu dan sejumput garam.', 'Panaskan minyak di wajan dengan api sedang.', 'Tuang telur, masak hingga bagian bawah kecokelatan, balik, lalu masak sebentar hingga matang.'],
+    telur_balado: ['Rebus telur 10 menit, kupas, lalu goreng sebentar hingga kulitnya sedikit berkerut. Angkat.', 'Haluskan atau ulek kasar cabai merah, bawang merah, bawang putih, dan tomat.', 'Tumis bumbu dengan sisa minyak hingga harum dan minyaknya keluar, sekitar 7 menit.', 'Tambahkan garam dan gula, masukkan telur, aduk hingga terbalut bumbu.'],
+    tempe_orek: ['Potong tempe seukuran korek api, goreng hingga kering, lalu angkat.', 'Iris bawang merah, bawang putih, dan cabai merah.', 'Tumis irisan bumbu bersama lengkuas dan daun salam hingga harum.', 'Masukkan tempe, kecap, gula, garam, dan 2 sdm air. Aduk di api kecil hingga kecap meresap dan agak kering.'],
+    tahu_tempe_sambal: ['Potong tahu dan tempe. Rendam sebentar dalam air yang diberi bawang putih halus, kunyit, dan garam.', 'Goreng tahu dan tempe hingga kuning kecokelatan.', 'Untuk sambal, goreng sebentar cabai rawit, tomat, dan bawang merah, lalu ulek dengan sedikit garam.', 'Sajikan tahu dan tempe dengan sambal.'],
+    ayam_goreng_kuning: ['Haluskan bawang putih, bawang merah, dan kunyit.', 'Masukkan ayam, bumbu halus, lengkuas, serai, daun salam, garam, dan air hingga ayam terendam.', 'Ungkep dengan api sedang 25–30 menit hingga air hampir habis.', 'Goreng ayam dalam minyak panas hingga kecokelatan.'],
+    ayam_kecap: ['Goreng ayam setengah matang, lalu angkat.', 'Tumis bawang putih cincang dan bawang bombay iris hingga layu.', 'Masukkan ayam, tomat, kecap, merica, garam, dan 100 ml air.', 'Masak dengan api kecil 15 menit hingga kuah mengental.'],
+    ayam_suwir: ['Rebus dada ayam bersama sedikit garam sekitar 20 menit, tiriskan, lalu suwir.', 'Haluskan cabai merah, cabai rawit, bawang merah, bawang putih, dan tomat.', 'Tumis bumbu bersama lengkuas dan daun salam hingga matang dan harum.', 'Masukkan ayam suwir, gula, dan garam. Aduk hingga bumbu meresap.'],
+    soto_ayam: ['Rebus ayam dalam 500 ml air per porsi hingga matang, angkat, lalu suwir. Simpan kaldunya.', 'Haluskan bawang merah, bawang putih, kunyit, dan jahe, lalu tumis bersama serai dan daun salam hingga harum.', 'Masukkan tumisan bumbu ke kaldu, tambahkan garam dan kaldu bubuk, lalu didihkan 10 menit.', 'Seduh kol iris dan tauge dengan air panas.', 'Sajikan ayam suwir, kol, dan tauge disiram kuah, beri daun bawang dan perasan jeruk nipis.'],
+    sup_ayam: ['Rebus ayam dalam 400 ml air per porsi hingga matang, buang buihnya.', 'Masukkan kentang dan wortel yang sudah dipotong dadu, masak hingga empuk.', 'Tumis bawang putih geprek sebentar, lalu masukkan ke sup.', 'Bumbui dengan garam, merica, dan kaldu bubuk. Taburi daun bawang.'],
+    kembung_goreng: ['Bersihkan ikan, kerat kedua sisinya, lalu lumuri perasan jeruk nipis dan diamkan 10 menit.', 'Lumuri ikan dengan bawang putih halus, kunyit, dan garam, diamkan 10 menit.', 'Goreng dalam minyak panas hingga kering. Jangan sering dibalik.', 'Untuk sambal, goreng cabai rawit, tomat, dan bawang merah, lalu ulek dengan garam.'],
+    pecel_lele: ['Bersihkan lele, lumuri jeruk nipis, lalu bilas.', 'Lumuri lele dengan bawang putih halus, kunyit, dan garam, diamkan 15 menit.', 'Goreng lele dalam minyak banyak hingga kering.', 'Goreng sebentar cabai, tomat, dan bawang merah, lalu ulek menjadi sambal dengan garam.', 'Sajikan dengan irisan timun dan kol.'],
+    sarden_tomat: ['Iris bawang bombay, cincang bawang putih, dan iris cabai rawit.', 'Tumis bumbu hingga harum dan bawang bombay layu.', 'Masukkan sarden beserta sausnya, tambah sedikit air bila terlalu kental.', 'Masak 5 menit hingga mendidih.'],
+    nugget: ['Panaskan minyak dengan api sedang.', 'Goreng nugget beku langsung tanpa dicairkan, 3–4 menit hingga kuning keemasan.', 'Tiriskan di atas tisu dapur.'],
+    perkedel: ['Kupas kentang, potong, lalu goreng atau rebus hingga empuk.', 'Haluskan kentang selagi panas.', 'Campur dengan bawang merah dan bawang putih goreng yang dihaluskan, daun bawang, garam, dan merica.', 'Bentuk bulat pipih, celupkan ke telur kocok, lalu goreng hingga kecokelatan.'],
+    kentang_balado: ['Potong dadu kentang, goreng hingga matang dan kering di luar.', 'Haluskan cabai merah, bawang merah, dan bawang putih.', 'Tumis bumbu dengan sedikit minyak hingga matang.', 'Masukkan kentang, gula, dan garam, aduk rata.'],
+    bening_bayam: ['Didihkan 300 ml air per porsi bersama irisan bawang merah dan bawang putih.', 'Masukkan jagung yang sudah dipipil atau dipotong, masak 5 menit.', 'Masukkan bayam, garam, dan gula.', 'Matikan api begitu bayam layu agar tetap hijau.'],
+    tumis_kangkung: ['Siangi kangkung lalu cuci bersih.', 'Tumis irisan bawang merah, bawang putih, dan cabai rawit hingga harum.', 'Masukkan kangkung dan saus tiram, besarkan api.', 'Aduk cepat 1–2 menit hingga kangkung layu, lalu angkat.'],
+    sayur_sop: ['Potong-potong sayuran sop.', 'Didihkan 400 ml air per porsi, masukkan wortel dan kentang lebih dulu.', 'Tumis bawang putih dan bawang merah sebentar, lalu masukkan ke kuah.', 'Masukkan kol dan buncis, bumbui dengan garam, merica, dan kaldu bubuk. Masak hingga sayur empuk, lalu taburi daun bawang.'],
+    capcay: ['Potong kol, wortel, dan sawi.', 'Tumis bawang putih dan bawang bombay hingga harum.', 'Masukkan wortel, lalu kol dan sawi, beri 150 ml air per porsi dan saus tiram.', 'Kentalkan dengan tepung yang dilarutkan dalam sedikit air, lalu beri garam.'],
+    tumis_buncis: ['Potong serong buncis dan wortel.', 'Tumis bawang merah dan bawang putih hingga harum.', 'Masukkan wortel, lalu buncis, beri 3 sdm air.', 'Tambahkan saus tiram dan masak hingga sayur matang namun tetap renyah.'],
+    tumis_toge: ['Buang akar tauge bila sempat, lalu cuci.', 'Tumis bawang putih dan cabai rawit hingga harum.', 'Masukkan tauge dan daun bawang dengan api besar, beri garam.', 'Aduk sebentar saja, sekitar 1 menit, agar tauge tetap renyah.'],
+    lodeh: ['Potong labu siam dan terong.', 'Tumis bawang merah, bawang putih, dan cabai bersama lengkuas dan daun salam hingga harum.', 'Tambahkan 250 ml air per porsi, didihkan, lalu masukkan labu siam.', 'Setelah labu hampir empuk, masukkan terong dan santan. Aduk terus agar santan tidak pecah, lalu beri garam dan gula.'],
+    terong_balado: ['Potong terong, goreng sebentar hingga layu, lalu angkat.', 'Haluskan cabai merah, bawang merah, bawang putih, dan tomat.', 'Tumis bumbu hingga matang dan berminyak.', 'Masukkan terong, gula, dan garam, aduk hingga terbalut bumbu.'],
+    lalapan: ['Cuci timun dan kol dengan air mengalir.', 'Potong timun dan kol, lalu sajikan segar sebagai pendamping lauk dan sambal.'],
+    nasgor_telur: ['Ulek bawang merah, bawang putih, cabai rawit, dan garam.', 'Orak-arik telur dengan sedikit minyak, sisihkan ke pinggir wajan.', 'Tumis bumbu hingga harum, lalu masukkan nasi.', 'Tambahkan kecap, aduk dengan api besar hingga rata, lalu taburi daun bawang.'],
+    mi_goreng_telur: ['Rebus mi bersama sawi hingga matang, lalu tiriskan.', 'Ceplok telur atau orak-arik dengan sedikit minyak.', 'Campur mi dengan bumbu bawaan dan irisan cabai rawit.', 'Sajikan dengan telur dan sawi.'],
+    mi_rebus: ['Didihkan air sesuai petunjuk kemasan.', 'Masukkan mi, tomat, dan sawi.', 'Pecahkan telur ke dalam kuah, jangan diaduk dulu agar telur utuh.', 'Masukkan bumbu, taburi daun bawang.'],
+    mi_jawa: ['Rebus mi telur hingga lunak, tiriskan.', 'Tumis bawang merah dan bawang putih, lalu orak-arik telur di wajan yang sama.', 'Masukkan wortel, kol, dan sawi, beri 3 sdm air.', 'Masukkan mi, kecap, saus tiram, garam, dan merica. Aduk dengan api besar hingga rata.'],
+    roti_telur: ['Kocok telur dengan sejumput garam.', 'Celupkan roti ke kocokan telur.', 'Panggang di wajan berminyak tipis hingga kedua sisi kecokelatan.']
+  };
+  RESEP.forEach(r => { r.langkah = LANGKAH[r.id] || []; });
+  // Takaran dapur untuk menampilkan resep: berat per satuan rumah tangga.
+  const TAKARAN = {
+    bawang_merah:[5,'siung'], bawang_putih:[4,'siung'], cabai_rawit:[1.5,'buah'], cabai_merah:[5,'buah'],
+    tomat:[100,'buah'], kentang:[150,'buah'], wortel:[100,'buah'], bombay:[150,'buah'], kunyit:[5,'ruas'], jahe:[5,'ruas'],
+    garam:[5,'sdt'], gula:[4,'sdt'], merica:[2.5,'sdt'], kaldu:[3,'sdt']
+  };
+
   // Menu hemat untuk isi otomatis: pasangan lauk + sayur yang masuk akal.
   const HEMAT = {
     lauk: ['telur_dadar','telur_balado','tempe_orek','tahu_tempe_sambal','ayam_goreng_kuning','ayam_kecap','sup_ayam','kembung_goreng','pecel_lele','sarden_tomat','perkedel','ayam_suwir'],
@@ -165,5 +205,5 @@ window.MENU_DATA = (function(){
     pagi: ['roti_telur','nasgor_telur']
   };
 
-  return { KAT, BAHAN, RESEP, HEMAT, SUMBER_HARGA: 'Harga pasar akhir Oktober 2026 (SP2KP Kemendag DKI Jakarta, PIHPS Bank Indonesia), dibulatkan' };
+  return { KAT, BAHAN, RESEP, HEMAT, TAKARAN, SUMBER_HARGA: 'Harga pasar akhir Oktober 2026 (SP2KP Kemendag DKI Jakarta, PIHPS Bank Indonesia), dibulatkan' };
 })();

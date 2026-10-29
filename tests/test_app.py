@@ -372,6 +372,35 @@ async def test_freshness(b, url):
     await ctx.close()
 
 
+async def test_cooking(b, url):
+    print("Cara memasak")
+    ctx, page, errors = await fresh(b, url)
+    await pick(page, 0, "siang", ["telur_dadar", "tumis_kangkung"])
+    await pick_opt(page, 0, "malam", "sisa")
+    await page.click('.day[data-d="0"] .day-cook')
+    body = await page.text_content("#dtBody")
+    check("cara masak hari ini memuat kedua menu", "Telur dadar daun bawang" in body and "Tumis kangkung" in body)
+    check("porsi termasuk sisa masakan (2 porsi)", "2 porsi" in body, body[:120])
+    check("takaran dapur: telur 4 butir", "4 butir" in body)
+    check("takaran dapur: bawang merah dalam siung", "siung" in body)
+    check("langkah memasak tampil", await page.locator("#dtBody .cook-steps li").count() >= 6)
+    await page.click("#dtClose")
+    await page.click("#tabResep")
+    await page.click('.rcard[data-id="sup_ayam"] .r-cook')
+    check("porsi dapat diatur di resep", not await page.is_hidden("#dtPorsiRow"))
+    await page.click("#dtPlus")
+    body = await page.text_content("#dtBody")
+    check("ayam untuk 2 porsi = 200 g", "200 g" in body, body[:200])
+    await page.click("#dtClose")
+    await page.click('.rcard[data-id="tumis_kangkung"] .r-copy')
+    await page.fill("#edSteps", "1. Tumis bawang.\n2. Masukkan kangkung.")
+    await page.click("#edSave")
+    own = await page.evaluate("window.__menuKost.state().resep.at(-1)")
+    check("langkah resep sendiri tersimpan tanpa nomor", own["langkah"] == ["Tumis bawang.", "Masukkan kangkung."], own.get("langkah"))
+    check("tanpa galat skrip", not errors, errors)
+    await ctx.close()
+
+
 async def main():
     srv, url = serve()
     tmp = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "tests"
@@ -384,6 +413,7 @@ async def main():
         await test_carry_over(b, url)
         await test_markup(b, url)
         await test_freshness(b, url)
+        await test_cooking(b, url)
         await test_week_tools_and_backup(b, url, tmp)
         await b.close()
     srv.shutdown()

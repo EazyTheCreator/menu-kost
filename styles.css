@@ -88,7 +88,7 @@ h2{font-size:1.12rem;font-weight:800;letter-spacing:-.01em}
 .hero .lbl{font-size:.74rem;text-transform:uppercase;letter-spacing:.09em;font-weight:700;opacity:.85}
 #sTotal{display:block;font-family:var(--f-display);font-weight:800;font-size:clamp(1.75rem, 7vw, 2.35rem);letter-spacing:-.02em;line-height:1.1;margin:2px 0 12px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .hero-chips{display:flex;flex-wrap:wrap;gap:6px}
-.hchip{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.16);border-radius:999px;padding:5px 11px 5px 8px;font-size:.8rem;backdrop-filter:blur(4px)}
+.hchip{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.16);border-radius:999px;padding:5px 11px 5px 8px;font-size:.8rem;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
 .hchip i{width:8px;height:8px;border-radius:50%;background:var(--lime)}
 .hchip.out i{background:var(--pink)}
 .hchip b{font-variant-numeric:tabular-nums;font-weight:700}
@@ -422,7 +422,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{opacity:.55;cursor:pointer
 /* Lembar bawah (pemilih menu & penyunting resep) */
 dialog.sheet{border:0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));margin:auto auto 0;width:100%;max-width:640px;max-height:88vh;max-height:88dvh;border-radius:26px 26px 0 0;background:var(--bg);color:var(--ink);box-shadow:0 -20px 50px -20px rgba(20,10,60,.5);overflow:auto;overscroll-behavior:contain}
 dialog.sheet[open]{display:flex;flex-direction:column;gap:12px;animation:sheetUp .42s cubic-bezier(.2,.9,.25,1) both}
-dialog.sheet::backdrop{background:rgba(20,12,50,.45);backdrop-filter:blur(3px);animation:fadeIn .3s ease both}
+dialog.sheet::backdrop{background:rgba(20,12,50,.45);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);animation:fadeIn .3s ease both}
 @media (min-width:700px){dialog.sheet{margin:auto;border-radius:26px;max-height:82vh}}
 @keyframes sheetUp{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}

@@ -63,7 +63,7 @@
   /* ---------- Penyimpanan ---------- */
   const defaults = () => ({
     v: 1,
-    set: { porsi: 1, waktu: { pagi: false, siang: true, malam: true }, beras: 100, sumber: 'auto', manual: 0, hitung: {}, kulkas: 'tidak' },
+    set: { porsi: 1, waktu: { pagi: false, siang: true, malam: true }, beras: 100, sumber: 'auto', manual: 0, hitung: {}, kulkas: 'tidak', toko: 'online', markup: 20 },
     harga: {},      // id bahan bawaan -> { h, isi, t, prev }
     bahan: {},      // bahan buatan sendiri: id -> { n, k, s, isi, lbl, h, stok, q, t, prev }
     resep: [],      // resep buatan sendiri
@@ -80,6 +80,8 @@
     s.set.manual = Math.max(0, Number(set.manual) || 0);
     s.set.hitung = (set.hitung && typeof set.hitung === 'object') ? set.hitung : {};
     s.set.kulkas = ['tidak', 'kulkas', 'freezer'].includes(set.kulkas) ? set.kulkas : 'tidak';
+    s.set.toko = set.toko === 'pasar' ? 'pasar' : 'online';
+    s.set.markup = Number.isFinite(Number(set.markup)) ? Math.max(0, Math.min(100, Math.round(Number(set.markup)))) : 20;
     s.harga = (o.harga && typeof o.harga === 'object') ? o.harga : {};
     s.bahan = (o.bahan && typeof o.bahan === 'object') ? o.bahan : {};
     s.resep = Array.isArray(o.resep) ? o.resep.filter(r => r && r.id && r.n && Array.isArray(r.bahan)) : [];
@@ -125,13 +127,22 @@
   const peekWeek = (k) => S.minggu[k] || null;
 
   /* ---------- Bahan & resep ---------- */
+  // Harga awal (bila belum diperbarui) disesuaikan dengan ukuran kemasan dan, untuk belanja di aplikasi,
+  // ditambah persentase perkiraan. Harga yang sudah diperbarui pengguna dipakai apa adanya.
+  const markupOn = () => S.set.toko === 'online' && S.set.markup > 0;
+  const round100 = (n) => Math.round(n / 100) * 100;
+  function awalPrice(base, isi){
+    const h = base.h * isi / base.isi;
+    return round100(markupOn() ? h * (1 + S.set.markup / 100) : h);
+  }
   function bahan(id){
     const base = D.BAHAN[id];
     if (base) {
       const o = S.harga[id] || {};
       const isi = o.isi > 0 ? o.isi : base.isi;
+      const own = o.h !== undefined && o.h >= 0;
       return Object.assign({ id, own:false }, base, {
-        h: o.h >= 0 && o.h !== undefined ? o.h : base.h, isi,
+        h: own ? o.h : awalPrice(base, isi), isi, ownPrice: own,
         lbl: o.isi > 0 && o.isi !== base.isi ? qtyLbl(isi, base.s) : base.lbl,
         t: o.t || 0, prev: o.prev, edited: !!(o.t)
       });
@@ -805,12 +816,32 @@
     save();
   }
   function changeTxt(b){
-    if (!b.edited) return b.own ? 'Bahan sendiri' : 'Harga awal';
+    if (!b.own && !b.ownPrice) return 'Harga awal' + (markupOn() ? ' + ' + S.set.markup + '%' : '') + (b.edited ? ' · kemasan diubah' : '');
+    if (!b.edited) return 'Bahan sendiri';
     let t = 'Diperbarui ' + new Intl.DateTimeFormat('id-ID', { day:'numeric', month:'short' }).format(new Date(b.t));
     if (b.prev !== undefined && b.prev !== b.h) t += ' · <span class="chg ' + (b.h > b.prev ? 'up' : 'down') + '">' + (b.h > b.prev ? 'naik ' : 'turun ') + rp(Math.abs(b.h - b.prev)) + '</span>';
     return t;
   }
+  function renderToko(){
+    $$('#tokoSeg button').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.v === S.set.toko)));
+    $('#markupRow').hidden = S.set.toko !== 'online';
+    $('#markupVal').textContent = S.set.markup + '%';
+    $('#markupMinus').disabled = S.set.markup <= 0;
+    $('#markupPlus').disabled = S.set.markup >= 60;
+    const n = bahanIds().map(bahan).filter(b => b && !b.own && !b.ownPrice).length;
+    $('#tokoNote').textContent = S.set.toko === 'online'
+      ? 'Belanja lewat aplikasi umumnya lebih mahal daripada pasar. Tambahan ' + S.set.markup + '% berlaku untuk ' + n + ' bahan yang harganya belum Anda perbarui; angka bawaan 20% hanya perkiraan kasar, sesuaikan setelah membandingkan dengan struk Anda.'
+      : 'Harga awal memakai harga pasar tradisional tanpa tambahan. ' + n + ' bahan masih memakai harga awal.';
+  }
+  $('#tokoSeg').addEventListener('click', (e) => {
+    const x = e.target.closest('button'); if (!x) return;
+    S.set.toko = x.dataset.v; save(); renderToko(); renderPrices(); renderSummary();
+  });
+  function stepMarkup(d){ S.set.markup = Math.max(0, Math.min(60, S.set.markup + d)); save(); renderToko(); renderPrices(); renderSummary(); }
+  $('#markupMinus').addEventListener('click', () => stepMarkup(-5));
+  $('#markupPlus').addEventListener('click', () => stepMarkup(5));
   function renderPrices(animate){
+    renderToko();
     const q = $('#priceSearch').value.trim().toLowerCase();
     const all = bahanIds().map(bahan).filter(b => b && (!q || b.n.toLowerCase().includes(q)));
     const groups = D.KAT.map(k => ({ k, xs: all.filter(b => (b.k || 'lain') === k.id).sort((a, c) => a.n.localeCompare(c.n, 'id')) })).filter(g => g.xs.length);
@@ -818,7 +849,7 @@
       '<div class="prow" data-id="' + esc(b.id) + '"><span class="prow-name">' + esc(b.n) + '<small>per kemasan ' + esc(b.lbl) + '</small></span>' +
       '<div class="money"><span>Rp</span><input class="p-h" inputmode="numeric" autocomplete="off" value="' + fmt(b.h) + '" aria-label="Harga ' + esc(b.n) + '"></div>' +
       '<div class="prow-meta"><span>' + changeTxt(b) + '</span><span class="isi-row">Isi <span class="qty sm"><input class="p-isi" inputmode="decimal" autocomplete="off" value="' + num1(b.isi) + '" aria-label="Isi kemasan ' + esc(b.n) + '"><span>' + esc(b.s) + '</span></span></span>' +
-      (b.own ? '<button type="button" class="link p-del">Hapus</button>' : (b.edited ? '<button type="button" class="link p-reset">Harga awal</button>' : '')) + '</div></div>').join('') + '</section>').join('')
+      (b.own ? '<button type="button" class="link p-del">Hapus</button>' : ((b.edited || b.ownPrice) ? '<button type="button" class="link p-reset">Harga awal</button>' : '')) + '</div></div>').join('') + '</section>').join('')
       : '<p class="empty">Bahan tidak ditemukan. Tambahkan sebagai bahan sendiri di bawah.</p>';
     $$('#priceList .p-h').forEach(inp => bindMoney(inp, () => {}));
     if (animate) flow($('#priceList'));
@@ -833,7 +864,7 @@
     const b = bahan(id);
     $('.prow-name small', row).textContent = 'per kemasan ' + b.lbl;
     $('.prow-meta > span', row).innerHTML = changeTxt(b);
-    if (!b.own && b.edited && !$('.p-reset', row)) $('.prow-meta', row).insertAdjacentHTML('beforeend', '<button type="button" class="link p-reset">Harga awal</button>');
+    if (!b.own && (b.edited || b.ownPrice) && !$('.p-reset', row)) $('.prow-meta', row).insertAdjacentHTML('beforeend', '<button type="button" class="link p-reset">Harga awal</button>');
     e.target.value = e.target.classList.contains('p-h') ? fmt(b.h) : num1(b.isi);
     renderSummary();
     toast('Harga ' + b.n + ' disimpan.');

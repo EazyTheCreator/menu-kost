@@ -163,10 +163,25 @@
     <details class="guide">
       <summary>Tentang harga awal</summary>
       <div class="guide-body">
-        <p>Harga awal hanyalah titik mulai, dibulatkan dari harga pasar tradisional akhir Oktober 2026 (data SP2KP Kementerian Perdagangan untuk DKI Jakarta dan PIHPS Bank Indonesia), lalu disesuaikan dengan ukuran kemasan yang lazim dibeli. Harga di Astro, GoMart, atau supermarket umumnya lebih tinggi.</p>
+        <p>Harga awal hanyalah titik mulai, dibulatkan dari harga pasar tradisional akhir Oktober 2026 (data SP2KP Kementerian Perdagangan untuk DKI Jakarta dan PIHPS Bank Indonesia), lalu disesuaikan dengan ukuran kemasan yang lazim dibeli. Harga di Astro, GoMart, atau supermarket umumnya lebih tinggi, sehingga untuk belanja lewat aplikasi harga awal ditambah persentase yang dapat Anda atur di atas.</p>
         <p>Setelah belanja, perbarui harga sesuai struk atau aplikasi tempat Anda membeli. Harga pribadi inilah yang dipakai untuk semua perkiraan berikutnya, dan perubahan naik atau turunnya ditampilkan.</p>
       </div>
     </details>
+    <section class="card toko" aria-labelledby="tokoTitle">
+      <div class="lbl-row">
+        <h2 id="tokoTitle">Biasanya belanja di</h2>
+        <div class="mini-seg" id="tokoSeg" role="group" aria-labelledby="tokoTitle">
+          <button type="button" data-v="online" aria-pressed="true">Aplikasi</button><button type="button" data-v="pasar" aria-pressed="false">Pasar / warung</button>
+        </div>
+      </div>
+      <div class="wk-row" id="markupRow">
+        <span id="markupLbl" class="flabel">Tambahan untuk harga awal</span>
+        <div class="stepper" role="group" aria-labelledby="markupLbl">
+          <button type="button" id="markupMinus" aria-label="Kurangi 5 persen">−</button><b id="markupVal" aria-live="polite">20%</b><button type="button" id="markupPlus" aria-label="Tambah 5 persen">+</button>
+        </div>
+      </div>
+      <small class="fhint" id="tokoNote"></small>
+    </section>
     <div class="field">
       <label for="priceSearch" class="sr">Cari bahan</label>
       <input class="plain" id="priceSearch" type="search" autocomplete="off" placeholder="Cari bahan, misalnya: telur">

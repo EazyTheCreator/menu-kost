@@ -468,3 +468,6 @@ dialog.sheet::backdrop{background:rgba(20,12,50,.45);backdrop-filter:blur(3px);a
 .done-status{margin:0;font-size:.86rem;font-weight:600;color:var(--muted);padding:10px 12px;border-radius:var(--r-sm);background:var(--surface-2)}
 .done-status.ok{background:var(--good-soft);color:var(--good)}
 .done-status b{font-variant-numeric:tabular-nums}
+.toko{gap:10px}
+.toko h2{font-size:1rem}
+#markupVal{min-width:44px;font-size:.98rem}

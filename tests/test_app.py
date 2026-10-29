@@ -40,16 +40,21 @@ def serve():
     return srv, f"http://127.0.0.1:{srv.server_address[1]}/index.html"
 
 
-async def fresh(browser, url, scheme="light", setup=None):
+async def fresh(browser, url, scheme="light", setup=None, market=True):
     ctx = await browser.new_context(viewport={"width": 390, "height": 844}, color_scheme=scheme,
                                     permissions=["clipboard-read", "clipboard-write"])
+    # Tes perhitungan memakai harga pasar (tanpa tambahan harga aplikasi) agar angkanya pasti.
+    # Diisi sebelum halaman dimuat pertama kali, dan hanya sekali.
+    init = "if (!localStorage.getItem('__tes')) { localStorage.setItem('__tes', '1');"
+    if market:
+        init += f" localStorage.setItem('{LS_KEY}', JSON.stringify({{ set: {{ toko: 'pasar' }} }}));"
+    if setup:
+        init += " " + setup + ";"
+    await ctx.add_init_script(init + " }")
     page = await ctx.new_page()
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     await page.goto(url)
-    if setup:
-        await page.evaluate(setup)
-        await page.reload()
     await page.wait_for_timeout(250)
     return ctx, page, errors
 
@@ -301,6 +306,33 @@ async def test_carry_over(b, url):
     await ctx.close()
 
 
+async def test_markup(b, url):
+    print("Tambahan harga belanja lewat aplikasi")
+    ctx, page, errors = await fresh(b, url, market=False)
+    await pick(page, 0, "siang", ["telur_dadar"])
+    s = await sh(page)
+    check("bawaan: aplikasi +20% (telur 19.000 → 22.800)", s["items"]["telur"]["cost"] == 22800, s["items"]["telur"])
+    await page.click("#tabHarga")
+    await page.click("#markupPlus")
+    s = await sh(page)
+    check("tambahan 25% (telur → 23.800)", s["items"]["telur"]["cost"] == 23800, s["items"]["telur"])
+    await page.click('#tokoSeg [data-v="pasar"]')
+    s = await sh(page)
+    check("pasar: tanpa tambahan", s["items"]["telur"]["cost"] == 19000)
+    check("pengatur persen disembunyikan untuk pasar", await page.is_hidden("#markupRow"))
+    await page.click('#tokoSeg [data-v="online"]')
+    await page.fill('.prow[data-id="telur"] .p-h', "27.000")
+    await page.dispatch_event('.prow[data-id="telur"] .p-h', "change")
+    s = await sh(page)
+    check("harga pribadi tidak ditambah persen", s["items"]["telur"]["cost"] == 27000, s["items"]["telur"])
+    await page.fill('.prow[data-id="bawang_merah"] .p-isi', "500")
+    await page.dispatch_event('.prow[data-id="bawang_merah"] .p-isi', "change")
+    s = await sh(page)
+    check("ubah kemasan tanpa harga pribadi: harga ikut skala (500 g → 25.000)", s["items"]["bawang_merah"]["cost"] == 25000, s["items"]["bawang_merah"])
+    check("tanpa galat skrip", not errors, errors)
+    await ctx.close()
+
+
 async def main():
     srv, url = serve()
     tmp = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "tests"
@@ -311,6 +343,7 @@ async def main():
         await test_prices_and_copy(b, url)
         await test_budget(b, url)
         await test_carry_over(b, url)
+        await test_markup(b, url)
         await test_week_tools_and_backup(b, url, tmp)
         await b.close()
     srv.shutdown()

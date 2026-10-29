@@ -12,6 +12,7 @@ Aplikasi web untuk merencanakan menu masak seminggu, menyusun daftar belanja sec
 - Daftar harga pribadi yang dapat diperbarui, dengan tambahan persen yang dapat diatur untuk belanja lewat aplikasi selama harga belum diperbarui
 - Perbandingan total belanja dengan amplop **Dapur & makan** dari [Amplop Gajian](https://eazythecreator.github.io/amplop-gajian/), atau dengan anggaran manual
 - **Catat ke Amplop Gajian**: membuka Amplop Gajian dengan nominal dan keterangan sudah terisi, lalu menampilkan status sudah dicatat
+- **Kadar gizi** per porsi (energi, protein, lemak, karbohidrat) dan perkiraan total per hari per orang, termasuk nasi
 - **Cara memasak** setiap resep dengan takaran dapur (siung, sdt, sdm) sesuai porsi, termasuk tampilan masak per hari
 - Resep sendiri (dengan langkah memasak) dan bahan sendiri
 - Data hanya tersimpan di perangkat pengguna; cadangan dan pemulihan; dapat dipasang di layar utama dan dibuka tanpa internet

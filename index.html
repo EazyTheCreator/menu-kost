@@ -227,7 +227,15 @@
       </div>
       <button type="button" class="ghost accent" id="newResep">+ Resep sendiri</button>
     </div>
-    <small class="fhint">Biaya per porsi dihitung dari harga pribadi Anda di tab Harga, belum termasuk nasi.</small>
+    <small class="fhint">Biaya dan gizi per porsi, belum termasuk nasi. Biaya dihitung dari harga pribadi Anda di tab Harga.</small>
+    <details class="guide">
+      <summary>Tentang perkiraan gizi</summary>
+      <div class="guide-body">
+        <p>Energi, protein, lemak, dan karbohidrat dihitung dari takaran bahan tiap resep, terutama berdasarkan Tabel Komposisi Pangan Indonesia (TKPI) Kementerian Kesehatan, dilengkapi data USDA FoodData Central dan label kemasan umum. Bagian yang tidak dimakan, seperti tulang dan kulit, sudah diperhitungkan. Untuk masakan yang digoreng, hanya sebagian minyak yang dihitung karena sisanya tertinggal di wajan.</p>
+        <p>Total per hari di tab Menu adalah perkiraan untuk satu orang, termasuk nasi (±<span id="nasiInfo">100 g beras</span> per porsi) dan sisa masakan yang dimakan.</p>
+        <p class="fhint">Angka ini perkiraan umum untuk perencanaan, bukan pengganti saran ahli gizi atau tenaga kesehatan. Kandungan sebenarnya bergantung pada merek, ukuran, dan cara memasak.</p>
+      </div>
+    </details>
     <ul class="recipe-list" id="recipeList"></ul>
   </section>
 

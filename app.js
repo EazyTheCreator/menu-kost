@@ -163,6 +163,36 @@
   const resepAll = () => D.RESEP.map(r => Object.assign({ own:false }, r)).concat(S.resep.map(r => Object.assign({ own:true }, r)));
   const resepById = (id) => resepAll().find(r => r.id === id) || null;
   // Biaya satu porsi (proporsional terhadap harga kemasan), tanpa nasi.
+  /* ---------- Gizi ---------- */
+  // Perkiraan gizi per porsi: [energi kkal, protein, lemak, karbohidrat]. Minyak goreng dihitung sebagian
+  // sesuai bagian yang ikut termakan. Bahan buatan sendiri belum memiliki data gizi.
+  function giziItems(items, oil){
+    const g = [0, 0, 0, 0], missing = [];
+    items.forEach(([id, q]) => {
+      const b = bahan(id); if (!b) return;
+      const base = D.BAHAN[id] && D.BAHAN[id].gizi;
+      if (!base) { missing.push(b.n); return; }
+      const f = (b.s === 'g' || b.s === 'ml' ? q / 100 : q) * (id === 'minyak' ? oil : 1);
+      for (let i = 0; i < 4; i++) g[i] += base[i] * f;
+    });
+    return { g, missing };
+  }
+  const resepGizi = (r) => giziItems(r.bahan, r.serap || 1);
+  const riceGizi = () => giziItems([['beras', S.set.beras]], 1).g;
+  const addG = (a, b, k) => { for (let i = 0; i < 4; i++) a[i] += b[i] * (k || 1); return a; };
+  const kkal = (g) => '±' + NF.format(Math.round(g[0] / 10) * 10) + ' kkal';
+  const giziShort = (g) => kkal(g) + ' · protein ' + Math.round(g[1]) + ' g';
+  function giziRow(g, missing){
+    return '<div class="gizi"><span><b>' + NF.format(Math.round(g[0] / 10) * 10) + '</b><small>kkal</small></span><span><b>' + Math.round(g[1]) + ' g</b><small>protein</small></span>' +
+      '<span><b>' + Math.round(g[2]) + ' g</b><small>lemak</small></span><span><b>' + Math.round(g[3]) + ' g</b><small>karbohidrat</small></span></div>' +
+      (missing && missing.length ? '<small class="gizi-miss">Belum termasuk ' + esc(missing.join(', ')) + ' (tanpa data gizi).</small>' : '');
+  }
+  // Gizi yang dimakan satu orang pada hari d, termasuk nasi dan sisa masakan.
+  function dayGizi(cw, d){
+    const g = [0, 0, 0, 0];
+    cw.eaten[d].forEach(e => { e.ids.forEach(id => { const r = resepById(id); if (r) addG(g, resepGizi(r).g); }); if (e.rice) addG(g, riceGizi()); });
+    return g;
+  }
   function resepCost(r){
     return r.bahan.reduce((s, [id, q]) => { const b = bahan(id); return b && b.isi ? s + q / b.isi * b.h : s; }, 0);
   }
@@ -189,7 +219,7 @@
   function computeWeek(w){
     const porsi = S.set.porsi, count = {}, perDay = Array.from({ length: 7 }, () => ({}));
     let rice = 0, meals = 0, cooks = 0, last = null;
-    const riceDay = Array(7).fill(0), orphan = [];
+    const riceDay = Array(7).fill(0), orphan = [], eaten = Array.from({ length: 7 }, () => []);
     for (let d = 0; d < 7; d++) {
       for (const wt of activeWaktu()) {
         const sl = w && w.slot[slotKey(d, wt.id)];
@@ -198,6 +228,7 @@
           if (!last) { orphan.push(slotKey(d, wt.id)); continue; }
           last.ids.forEach(id => { count[id] = (count[id] || 0) + porsi; perDay[last.d][id] = (perDay[last.d][id] || 0) + porsi; });
           if (last.rice) { rice += porsi * S.set.beras; riceDay[last.d] += porsi * S.set.beras; }
+          eaten[d].push({ ids: last.ids, rice: last.rice });
           meals++;
           continue;
         }
@@ -207,10 +238,11 @@
         const nr = needsRice(ids);
         if (nr) { rice += porsi * S.set.beras; riceDay[d] += porsi * S.set.beras; }
         last = { ids, rice: nr, d };
+        eaten[d].push({ ids, rice: nr });
         meals++; cooks++;
       }
     }
-    return { count, rice, meals, cooks, perDay, riceDay, orphan };
+    return { count, rice, meals, cooks, perDay, riceDay, orphan, eaten };
   }
   function needsOf(count, rice){
     const need = {};
@@ -437,6 +469,8 @@
       const need = needsOf(cw.perDay[d], cw.riceDay[d]), val = usedValue(need);
       html += '<li class="day' + (isToday ? ' today' : '') + '" data-d="' + d + '"><div class="day-head"><span><b>' + HARI[d] + '</b> <small>' + date.getDate() + ' ' + BLN[date.getMonth()] + '</small>' +
         (isToday ? '<span class="tag ok">Hari ini</span>' : '') + '</span>' + (val > 0 ? '<span class="day-cost">±' + rpE(val) + '</span>' : '') + '</div>';
+      const dg = dayGizi(cw, d);
+      if (dg[0] > 0) html += '<span class="day-gizi">' + giziShort(dg) + ' per orang' + (cw.eaten[d].some(e => e.rice) ? ', termasuk nasi' : '') + '</span>';
       act.forEach(wt => {
         const sl = w && w.slot[slotKey(d, wt.id)];
         let body = '';
@@ -586,7 +620,7 @@
     $('#pickList').innerHTML = rs.length ? rs.map(r =>
       '<li><button type="button" class="pitem" data-id="' + esc(r.id) + '" aria-pressed="' + sel.has(r.id) + '" style="--tone:' + JENIS_TONE[r.jenis] + '">' +
       '<span class="check" aria-hidden="true">' + CHECK + '</span><strong>' + esc(r.n) + '</strong>' +
-      '<small>' + JENIS[r.jenis] + ' · ' + (r.menit ? r.menit + ' mnt' : '') + (r.own ? ' · resep sendiri' : '') + '</small>' +
+      '<small>' + JENIS[r.jenis] + (r.menit ? ' · ' + r.menit + ' mnt' : '') + ' · ' + giziShort(resepGizi(r).g) + (r.own ? ' · resep sendiri' : '') + '</small>' +
       '<span class="rcost">' + rpE(resepCost(r)) + '</span></button></li>').join('')
       : '<li class="note">Tidak ada menu yang cocok. Tambahkan resep sendiri di tab Resep.</li>';
   }
@@ -1006,6 +1040,7 @@
       const bh = r.bahan.map(([bid, q]) => { const b = bahan(bid); return b ? '<li><span>' + esc(b.n.replace(/ \(.*\)$/, '')) + '</span><b>' + esc(kitchenQty(b, q * porsi)) + '</b></li>' : ''; }).join('');
       const steps = (r.langkah || []).map(x => '<li>' + esc(x) + '</li>').join('');
       return '<article class="cook"><div class="cook-head" style="--tone:' + JENIS_TONE[r.jenis] + '"><span class="ico sm">' + svg(r.jenis === 'sayur' ? 'leaf' : r.jenis === 'sekali' ? 'bowl' : 'pot') + '</span><div><h3>' + esc(r.n) + '</h3><small>' + porsi + ' porsi' + (r.menit ? ' · ±' + r.menit + ' menit' : '') + (r.jenis !== 'sekali' ? ' · sajikan dengan nasi' : '') + '</small></div></div>' +
+        (() => { const gz = resepGizi(r); return '<h4>Gizi per porsi' + (r.jenis !== 'sekali' ? ' (tanpa nasi)' : '') + '</h4>' + giziRow(gz.g, gz.missing); })() +
         '<h4>Bahan</h4><ul class="cook-bahan">' + bh + '</ul>' +
         (steps ? '<h4>Cara memasak</h4><ol class="cook-steps">' + steps + '</ol>' : '<p class="fhint">Belum ada langkah memasak. Tambahkan lewat <em>Ubah</em> di tab Resep.</p>') +
         (r.catatan ? '<p class="rnote">' + esc(r.catatan) + '</p>' : '') + '</article>';
@@ -1020,6 +1055,7 @@
   /* ---------- Tab Resep ---------- */
   let resepFilter = '';
   function renderRecipes(animate){
+    $('#nasiInfo').textContent = S.set.beras + ' g beras';
     $$('#resepFilter button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.f === resepFilter)));
     const rs = resepAll().filter(r => !resepFilter || r.jenis === resepFilter);
     rs.sort((a, b) => (b.own - a.own) || resepCost(a) - resepCost(b));
@@ -1028,6 +1064,7 @@
       return '<li class="rcard" data-id="' + esc(r.id) + '" style="--tone:' + JENIS_TONE[r.jenis] + '"><div class="rcard-top"><span class="ico sm">' + svg(r.jenis === 'sayur' ? 'leaf' : r.jenis === 'sekali' ? 'bowl' : 'pot') + '</span><div><h3>' + esc(r.n) + '</h3>' +
         '<div class="rmeta"><span class="tag ' + r.jenis + '">' + JENIS[r.jenis] + '</span>' + (r.own ? '<span class="tag own">Resep sendiri</span>' : '') + (r.menit ? '<span>' + r.menit + ' menit</span>' : '') + '</div></div>' +
         '<span class="rcost" title="Biaya per porsi">' + rpE(resepCost(r)) + '</span></div>' +
+        (() => { const gz = resepGizi(r); return giziRow(gz.g, gz.missing); })() +
         '<p class="rbahan">' + esc(names.join(', ')) + '</p>' + (r.catatan ? '<p class="rnote">' + esc(r.catatan) + '</p>' : '') +
         '<div class="ractions"><button type="button" class="ghost accent r-cook">Cara masak</button>' + (r.own ? '<button type="button" class="ghost r-edit">Ubah</button><button type="button" class="ghost r-del">Hapus</button>' : '<button type="button" class="ghost r-copy">Salin &amp; ubah</button>') + '</div></li>';
     }).join('');
@@ -1077,7 +1114,8 @@
         '<button type="button" class="idel" aria-label="Hapus bahan">×</button></li>';
     }).join('');
     const cost = resepCost({ bahan: ed.bahan });
-    $('#edCost').textContent = 'Perkiraan biaya per porsi: ' + rpE(cost) + (ed.jenis === 'sekali' ? '' : ' (belum termasuk nasi)') + '.';
+    const gz = giziItems(ed.bahan, 1);
+    $('#edCost').textContent = 'Perkiraan per porsi: ' + rpE(cost) + ', ' + giziShort(gz.g) + (ed.jenis === 'sekali' ? '' : ' (belum termasuk nasi)') + '.' + (gz.missing.length ? ' Bahan sendiri belum dihitung gizinya.' : '');
   }
   $('#edJenis').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; ed.jenis = b.dataset.v; renderEditor(); });
   $('#edBahan').addEventListener('change', (e) => {

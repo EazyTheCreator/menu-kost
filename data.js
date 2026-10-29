@@ -197,6 +197,29 @@ window.MENU_DATA = (function(){
     garam:[5,'sdt'], gula:[4,'sdt'], merica:[2.5,'sdt'], kaldu:[3,'sdt']
   };
 
+  // Perkiraan gizi per satuan beli (sudah memperhitungkan bagian yang dapat dimakan): [energi kkal, protein g, lemak g, karbohidrat g].
+  // Bahan dalam g/ml dihitung per 100 g/ml; bahan bersatuan (butir, ikat, buah, kaleng, dsb.) per satu satuan.
+  // Sumber utama Tabel Komposisi Pangan Indonesia (TKPI, Kemenkes); dilengkapi USDA FoodData Central dan label kemasan umum.
+  const GIZI = {
+    bawang_merah:[35,1.4,0.3,8.3], bawang_putih:[84,4,0.2,20.3], bombay:[36,1,0.1,8.4], cabai_merah:[31,0.9,0.3,6.2],
+    cabai_rawit:[88,4,2,17], tomat:[23,1.2,0.5,4.5], daun_bawang:[4,0.3,0,0.8], rempah:[0,0,0,0], kunyit:[63,2,3,10],
+    jahe:[51,1.5,1,10.1], jeruk_nipis:[8,0.2,0,2.6], bayam:[32,3.1,0.6,5], kangkung:[49,6,1.2,6.8], sawi:[24,2,0.3,3.5],
+    kol:[19,1,0.1,4.4], wortel:[32,0.9,0.5,7], buncis:[31,2.2,0.3,6.9], kentang:[53,1.8,0.2,11.5], labu_siam:[60,1.2,0.2,13.4],
+    jagung:[162,5,1.8,34], toge:[29,2.9,0.2,5.6], terong:[21,1,0.1,4.8], timun:[14,0.6,0.1,3.2], sayur_sop:[88,3.8,0.5,17.5],
+    telur:[77,6.2,5.4,0.4], ayam:[137,11.7,9.8,0], dada_ayam:[120,22.5,2.6,0], tempe:[201,20.8,8.8,13.5], tahu:[56,7.6,3.3,0.6],
+    kembung:[90,17,2.7,0], lele:[50,8.9,1.4,0], sarden:[248,26,14,3], nugget:[260,14,16,15],
+    beras:[357,8.4,1.7,77.1], minyak:[813,0,92,0], mi_instan:[380,8,14,54], mi_telur:[339,10,1.7,76], roti:[62,2,0.3,12.5],
+    santan:[190,2,18,4], terigu:[333,9,1,77], garam:[0,0,0,0], gula:[394,0,0,94], merica:[251,10,3,64], kaldu:[250,10,5,40],
+    kecap:[320,5,0,75], saus_tiram:[60,1.5,0.3,13]
+  };
+  Object.keys(BAHAN).forEach(id => { if (GIZI[id]) BAHAN[id].gizi = GIZI[id]; });
+  // Bagian minyak yang ikut termakan (sisanya tertinggal di wajan setelah menggoreng).
+  const SERAP = {
+    telur_dadar:0.8, telur_balado:0.6, tempe_orek:0.5, tahu_tempe_sambal:0.25, ayam_goreng_kuning:0.25, ayam_kecap:0.6,
+    kembung_goreng:0.2, pecel_lele:0.2, nugget:0.25, perkedel:0.3, kentang_balado:0.3, terong_balado:0.5
+  };
+  RESEP.forEach(r => { r.serap = SERAP[r.id] || 1; });
+
   // Menu hemat untuk isi otomatis: pasangan lauk + sayur yang masuk akal.
   const HEMAT = {
     lauk: ['telur_dadar','telur_balado','tempe_orek','tahu_tempe_sambal','ayam_goreng_kuning','ayam_kecap','sup_ayam','kembung_goreng','pecel_lele','sarden_tomat','perkedel','ayam_suwir'],

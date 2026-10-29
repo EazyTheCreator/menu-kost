@@ -501,3 +501,13 @@ dialog.sheet::backdrop{background:rgba(20,12,50,.45);-webkit-backdrop-filter:blu
 .cook-steps li::marker{font-weight:800;color:var(--accent)}
 textarea.plain{resize:vertical;line-height:1.45;font-size:.9rem}
 @media (max-width:400px){.cook-bahan{grid-template-columns:1fr}}
+
+/* Gizi */
+.gizi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.gizi span{display:flex;flex-direction:column;align-items:flex-start;gap:0;padding:6px 8px;border-radius:10px;background:var(--surface-2);min-width:0}
+.gizi b{font-family:var(--f-display);font-size:.9rem;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.gizi small{font-size:.66rem;color:var(--muted);font-weight:600}
+.gizi span:first-child{background:var(--accent-soft)}
+.gizi span:first-child b{color:var(--accent)}
+.gizi-miss{font-size:.74rem;color:var(--warn)}
+.day-gizi{font-size:.76rem;color:var(--muted);font-weight:600;padding:0 4px;margin-top:-4px;font-variant-numeric:tabular-nums}

@@ -4,7 +4,7 @@ Aplikasi web untuk merencanakan menu masak seminggu, menyusun daftar belanja sec
 
 - Pilih menu per hari untuk sarapan, siang, dan malam; atur porsi sekali makan
 - Opsi **Sisa masakan** untuk masak sekali dan makan dua kali, sehingga bahan dihitung dua porsi
-- **Isi otomatis menu hemat**: memilih kombinasi lauk dan sayur dengan tambahan biaya belanja terkecil, menghindari bahan yang akan layu, dengan batas pengulangan agar tetap bervariasi
+- **Isi otomatis menu hemat** yang tidak melebihi jatah belanja per minggu: memilih kombinasi lauk dan sayur dengan tambahan biaya terkecil, lalu mengganti menu yang lebih murah sampai masuk jatah, menghindari bahan yang akan layu dan menjaga variasi; bila jatah tidak mungkin dicapai, aplikasi menampilkan menu termurah beserta sarannya
 - Daftar belanja tersusun per kelompok, dibulatkan ke kemasan utuh; bahan dapur yang biasanya tersedia dipisahkan
 - **Sisa kemasan** bahan awet (bawang, telur, kentang, beras) terbawa ke minggu berikutnya dan mengurangi daftar belanja; dapat dikoreksi manual
 - **Kesegaran bahan**: daya tahan per bahan sesuai ketersediaan kulkas, peringatan bahan yang mungkin layu, dan pilihan belanja dua kali (Senin & Kamis)

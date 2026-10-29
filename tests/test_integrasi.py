@@ -56,6 +56,7 @@ async def run(engine, base):
     await page.goto(base + "/menu-kost/index.html")
     await page.wait_for_timeout(300)
     await page.click("#autoFill")
+    await page.wait_for_selector("#autoFill:not([disabled])")
     await page.click("#tabBelanja")
     await page.wait_for_timeout(200)
     bg = await page.evaluate("window.__menuKost.budget()")

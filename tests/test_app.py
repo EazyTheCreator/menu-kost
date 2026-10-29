@@ -220,6 +220,7 @@ async def test_budget(b, url):
     check("terpakai hanya dari rincian bahan", bg["terpakai"] == 120000, bg.get("terpakai"))
     check("jatah per minggu proporsional", bg["jatah"] == round(900000 * 7 / days), (bg.get("jatah"), round(900000 * 7 / days)))
     await page.click("#autoFill")
+    await page.wait_for_selector("#autoFill:not([disabled])")
     await page.click("#tabBelanja")
     txt = await page.text_content("#budgetCard")
     check("kartu anggaran menampilkan jatah", "Jatah belanja per minggu" in txt and "Sisa amplop" in txt)
@@ -251,6 +252,7 @@ async def test_week_tools_and_backup(b, url, tmp):
     print("Isi otomatis, salin minggu, dan cadangan")
     ctx, page, errors = await fresh(b, url)
     await page.click("#autoFill")
+    await page.wait_for_selector("#autoFill:not([disabled])")
     filled = await page.locator(".slot.filled").count()
     check("isi otomatis mengisi 14 slot", filled == 14, filled)
     s = await sh(page)
@@ -446,6 +448,35 @@ async def test_nutrition(b, url):
     await ctx.close()
 
 
+async def test_fit_budget(b, url):
+    print("Isi otomatis menyesuaikan jatah belanja")
+    ctx, page, errors = await fresh(b, url, setup="localStorage.setItem('menu-kost-v1', JSON.stringify({ set: { toko: 'pasar', manual: 550000, sumber: 'manual' } }))", market=False)
+    for i in range(3):
+        await page.click("#autoFill")
+        await page.wait_for_selector("#autoFill:not([disabled])")
+        await page.wait_for_timeout(50)
+        s = await sh(page)
+        bg = await page.evaluate("window.__menuKost.budget()")
+        check(f"percobaan {i + 1}: belanja {s['pay']} tidak melebihi jatah {bg['jatah']}", s["pay"] <= bg["jatah"])
+        check(f"percobaan {i + 1}: semua slot terisi", await page.locator(".slot.filled").count() == 14)
+        msg = await page.text_content("#menuMsg")
+        check(f"percobaan {i + 1}: pesan menyebut masih dalam jatah", "masih dalam jatah" in msg, msg)
+        dishes = await page.evaluate("[...new Set(Object.values(window.__menuKost.state().minggu[window.__menuKost.week()].slot).flatMap(x => x.r || []))].length")
+        check(f"percobaan {i + 1}: menu tetap bervariasi (≥5 masakan berbeda)", dishes >= 5, dishes)
+        await page.click("#clearWeek")
+        await page.click("#clearWeek")
+    await page.click("#tabBelanja")
+    await page.fill("#manualBudget", "250000")
+    await page.dispatch_event("#manualBudget", "input")
+    await page.click("#tabMenu")
+    await page.click("#autoFill")
+    await page.wait_for_selector("#autoFill:not([disabled])")
+    msg = await page.text_content("#menuMsg")
+    check("jatah terlalu kecil: pesan menyebut selisih dan saran", "masih lebih" in msg and "Yang dapat dicoba" in msg, msg)
+    check("tanpa galat skrip", not errors, errors)
+    await ctx.close()
+
+
 async def main():
     srv, url = serve()
     tmp = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "tests"
@@ -460,6 +491,7 @@ async def main():
         await test_freshness(b, url)
         await test_cooking(b, url)
         await test_nutrition(b, url)
+        await test_fit_budget(b, url)
         await test_week_tools_and_backup(b, url, tmp)
         await b.close()
     srv.shutdown()

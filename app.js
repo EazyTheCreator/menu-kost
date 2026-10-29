@@ -136,7 +136,16 @@
     const h = base.h * isi / base.isi;
     return round100(markupOn() ? h * (1 + S.set.markup / 100) : h);
   }
+  // Cache sementara selama pencarian menu otomatis agar ribuan simulasi daftar belanja tetap cepat.
+  let fast = null;
+  function withCache(fn){ fast = { b: new Map(), memo: new Map() }; try { return fn(); } finally { fast = null; } }
   function bahan(id){
+    if (fast && fast.b.has(id)) return fast.b.get(id);
+    const v = bahanRaw(id);
+    if (fast) fast.b.set(id, v);
+    return v;
+  }
+  function bahanRaw(id){
     const base = D.BAHAN[id];
     if (base) {
       const o = S.harga[id] || {};
@@ -160,8 +169,13 @@
   }
   const durable = (b) => shelf(b) >= 10;
   const bahanIds = () => Object.keys(D.BAHAN).concat(Object.keys(S.bahan));
-  const resepAll = () => D.RESEP.map(r => Object.assign({ own:false }, r)).concat(S.resep.map(r => Object.assign({ own:true }, r)));
-  const resepById = (id) => resepAll().find(r => r.id === id) || null;
+  const resepAllRaw = () => D.RESEP.map(r => Object.assign({ own:false }, r)).concat(S.resep.map(r => Object.assign({ own:true }, r)));
+  const resepAll = () => { if (!fast) return resepAllRaw(); if (!fast.ra) fast.ra = resepAllRaw(); return fast.ra; };
+  function resepById(id){
+    if (!fast) return resepAllRaw().find(r => r.id === id) || null;
+    if (!fast.rm) fast.rm = new Map(resepAll().map(r => [r.id, r]));
+    return fast.rm.get(id) || null;
+  }
   // Biaya satu porsi (proporsional terhadap harga kemasan), tanpa nasi.
   /* ---------- Gizi ---------- */
   // Perkiraan gizi per porsi: [energi kkal, protein, lemak, karbohidrat]. Minyak goreng dihitung sebagian
@@ -329,7 +343,10 @@
     return planWeek(prevK, depth + 1, memo).leftover;
   }
   function shopping(k){
-    const p = planWeek(k || wk, 0, new Map());
+    // Saat pencarian menu, minggu-minggu sebelumnya tidak berubah sehingga hasilnya boleh dipakai ulang.
+    let memo = new Map();
+    if (fast) { memo = fast.memo; memo.delete(k || wk); }
+    const p = planWeek(k || wk, 0, memo);
     const order = D.KAT.map(x => x.id);
     const items = p.items.slice().sort((a, b) => (order.indexOf(a.b.k) - order.indexOf(b.b.k)) || a.b.n.localeCompare(b.b.n, 'id'));
     const extra = p.w ? p.w.extra : [];
@@ -539,17 +556,94 @@
     const top = scored.filter(x => x.cost <= scored[0].cost + 3000).slice(0, 4);
     return top[Math.floor(Math.random() * top.length)].ids;
   }
-  $('#autoFill').addEventListener('click', () => {
-    const act = activeWaktu(), w = W(), msg = $('#menuMsg');
-    msg.className = 'form-msg';
-    if (!act.length) { msg.className = 'form-msg bad'; msg.textContent = 'Pilih minimal satu waktu makan lebih dulu.'; return; }
+  // Menyesuaikan slot hasil isi otomatis agar perkiraan belanja tidak melebihi jatah per minggu.
+  // Setiap langkah memilih satu penggantian yang paling menurunkan biaya, dengan penalti untuk bahan yang
+  // akan layu, menu tanpa sayur, dan menu sekali makan, serta batas pengulangan agar tetap bervariasi.
+  function fitBudget(w, keys, B){
+    return withCache(() => {
+      const byCost = (list, n) => list.filter(id => resepById(id)).sort((a, b) => resepCost(resepById(a)) - resepCost(resepById(b))).slice(0, n);
+      const lauk = byCost(D.HEMAT.lauk, 9), sayur = byCost(D.HEMAT.sayur, 7);
+      const optsMain = [];
+      lauk.forEach(l => { sayur.forEach(sy => optsMain.push({ r: [l, sy] })); optsMain.push({ r: [l] }); });
+      D.HEMAT.sekali.forEach(x => optsMain.push({ r: [x] }));
+      const optsPagi = D.HEMAT.pagi.map(x => ({ r: [x] }));
+      const dayOf = (k) => Number(k.split('-')[0]), wOf = (k) => k.split('-')[1];
+      const isSekali = (id) => { const r = resepById(id); return !!r && r.jenis === 'sekali'; };
+      const same = (a, b) => !!a && !!b && !!a.sisa === !!b.sisa && JSON.stringify(a.r || []) === JSON.stringify(b.r || []);
+      function pen(k, sl){
+        if (!sl || sl.sisa || !sl.r) return 0;
+        let p = staleOn(sl.r, dayOf(k), w).length * 20000;
+        if (wOf(k) !== 'pagi') {
+          const rs = sl.r.map(resepById).filter(Boolean);
+          if (rs.some(r => r.jenis === 'sekali')) p += 1500;
+          else if (!rs.some(r => r.jenis === 'sayur')) p += 2500;
+        }
+        return p;
+      }
+      function valid(k, sl, strict){
+        const d = dayOf(k);
+        if (sl.sisa) { const src = w.slot[slotKey(d, 'siang')]; return wOf(k) === 'malam' && !!(src && src.r && src.r.length && !src.luar); }
+        const others = Object.keys(w.slot).filter(x => x !== k && w.slot[x] && w.slot[x].r);
+        for (const id of sl.r) {
+          const hits = others.filter(x => w.slot[x].r.includes(id));
+          if (hits.length >= (strict ? 2 : 3)) return false;
+          if (hits.some(x => Math.abs(dayOf(x) - d) < (strict ? 2 : 1))) return false;
+        }
+        if (sl.r.some(isSekali) && others.filter(x => w.slot[x].r.some(isSekali)).length >= 2) return false;
+        return true;
+      }
+      let pay = shopping().pay, steps = 0;
+      for (const strict of [true, false]) {
+        while (pay > B && steps < 80) {
+          let best = null;
+          for (const k of keys) {
+            const old = w.slot[k], oldPen = pen(k, old);
+            const opts = wOf(k) === 'pagi' ? optsPagi : (wOf(k) === 'malam' ? optsMain.concat([{ sisa: true }]) : optsMain);
+            for (const o of opts) {
+              if (same(o, old) || !valid(k, o, strict)) continue;
+              w.slot[k] = o;
+              const p = shopping().pay, score = p + pen(k, o) - oldPen;
+              if (!best || score < best.score) best = { k, o, p, score };
+            }
+            w.slot[k] = old;
+          }
+          // Ganti satu menu di semua slotnya sekaligus, agar bahan yang mahal bisa hilang dari daftar belanja.
+          const dishes = new Set(); keys.forEach(k => { const sl = w.slot[k]; if (sl && sl.r) sl.r.forEach(id => dishes.add(id)); });
+          dishes.forEach(id => {
+            const r0 = resepById(id); if (!r0) return;
+            const where = keys.filter(k => w.slot[k] && w.slot[k].r && w.slot[k].r.includes(id));
+            const pool = r0.jenis === 'sayur' ? sayur : r0.jenis === 'sekali' ? D.HEMAT.sekali : (where.some(k => wOf(k) === 'pagi') ? D.HEMAT.pagi : lauk);
+            pool.forEach(nid => {
+              if (nid === id || where.some(k => w.slot[k].r.includes(nid))) return;
+              const olds = where.map(k => w.slot[k]);
+              const news = olds.map(o => ({ r: o.r.map(x => x === id ? nid : x) }));
+              if (!where.every((k, i) => { w.slot[k] = news[i]; return true; })) return;
+              const ok = where.every((k, i) => valid(k, news[i], strict));
+              if (ok) {
+                const p = shopping().pay;
+                const score = p + where.reduce((a, k, i) => a + pen(k, news[i]) - pen(k, olds[i]), 0);
+                if (!best || score < best.score) best = { multi: where.map((k, i) => [k, news[i]]), p, score };
+              }
+              where.forEach((k, i) => { w.slot[k] = olds[i]; });
+            });
+          });
+          if (!best || best.score >= pay) break;
+          if (best.multi) best.multi.forEach(([k, o]) => { w.slot[k] = clone(o); }); else w.slot[best.k] = clone(best.o);
+          pay = best.p; steps++;
+        }
+      }
+      return pay;
+    });
+  }
+  // Isi slot kosong secara bertahap: setiap slot memilih menu dengan tambahan biaya terkecil.
+  function fillGreedy(w, act){
     const pairs = [];
     D.HEMAT.lauk.forEach(l => D.HEMAT.sayur.forEach(sy => pairs.push([l, sy])));
     const used = {};
     const mark = (ids, d) => ids.forEach(id => { (used[id] = used[id] || []).push(d); });
     for (let d = 0; d < 7; d++) act.forEach(wt => { const sl = w.slot[slotKey(d, wt.id)]; if (sl && sl.r) mark(sl.r, d); });
     const carried = startStock(wk, 0, new Map());
-    let filled = 0;
+    const mine = [];
     for (let d = 0; d < 7; d++) {
       act.forEach(wt => {
         const k = slotKey(d, wt.id);
@@ -560,14 +654,55 @@
         else if (wt.id === 'malam' && (d === 3 || d === 5)) val = { r: chooseCheap(w, D.HEMAT.sekali.map(x => [x]), d, used, carried) };
         else val = { r: chooseCheap(w, pairs, d, used, carried) };
         if (val.r) mark(val.r, d);
-        w.slot[k] = val; filled++;
+        w.slot[k] = val; mine.push(k);
       });
     }
+    return mine;
+  }
+  let filling = false;
+  $('#autoFill').addEventListener('click', async () => {
+    if (filling) return;
+    const act = activeWaktu(), w = W(), msg = $('#menuMsg'), btn = $('#autoFill');
+    msg.className = 'form-msg';
+    if (!act.length) { msg.className = 'form-msg bad'; msg.textContent = 'Pilih minimal satu waktu makan lebih dulu.'; return; }
+    const base = clone(w.slot), bg = budget();
+    let mine = fillGreedy(w, act);
+    const filled = mine.length;
     if (!filled) { msg.textContent = 'Semua slot sudah terisi. Kosongkan minggu ini jika ingin mengacak ulang.'; return; }
-    msg.textContent = filled + ' slot diisi dengan menu hemat. Ketuk slot untuk mengganti.';
+    if (bg.jatah > 0) {
+      // Beberapa percobaan dengan susunan awal berbeda; ambil yang termurah, berhenti begitu masuk jatah.
+      const before = shopping().pay, t0 = performance.now(), label = btn.textContent;
+      filling = true; btn.disabled = true; btn.textContent = 'Menyusun menu hemat…';
+      msg.textContent = 'Mencari kombinasi menu yang masuk jatah ' + rp(bg.jatah) + '…';
+      let best = null;
+      try {
+        for (let i = 0; i < 8; i++) {
+          await new Promise(r => setTimeout(r, 16));   // beri kesempatan layar diperbarui di antara percobaan
+          if (i) { w.slot = clone(base); mine = fillGreedy(w, act); }
+          const pay = fitBudget(w, mine, bg.jatah);
+          if (!best || pay < best.pay) best = { pay, slot: clone(w.slot) };
+          if (best.pay <= bg.jatah || performance.now() - t0 > 3000) break;
+        }
+      } finally { filling = false; btn.disabled = false; btn.textContent = label; }
+      w.slot = best.slot;
+      if (best.pay <= bg.jatah) {
+        msg.textContent = filled + ' slot diisi. Perkiraan belanja ' + rp(best.pay) + ', masih dalam jatah ' + rp(bg.jatah) + ' per minggu' + (before > bg.jatah ? ' setelah beberapa menu diganti yang lebih murah' : '') + '. Ketuk slot untuk mengganti.';
+      } else {
+        msg.className = 'form-msg bad';
+        const tips = [];
+        if (S.set.kulkas === 'tidak' && S.set.trip === 1) tips.push('belanja dua kali seminggu, karena tanpa kulkas lauk segar untuk akhir minggu harus diganti bahan awet yang lebih mahal');
+        if (markupOn() && bahanIds().map(bahan).filter(b => b && b.ownPrice).length < 5) tips.push('perbarui harga sesuai struk, karena harga awal aplikasi ditambah ' + S.set.markup + '%');
+        if (S.set.porsi > 1) tips.push('periksa jumlah porsi (' + S.set.porsi + ' porsi sekali makan)');
+        tips.push('ganti beberapa slot dengan Makan di luar bila memang makan di luar');
+        msg.textContent = 'Menu termurah yang bisa disusun ' + rp(best.pay) + ', masih lebih ' + rp(best.pay - bg.jatah) + ' dari jatah ' + rp(bg.jatah) + '. Yang dapat dicoba: ' + tips.join('; ') + '.';
+      }
+    } else {
+      msg.textContent = filled + ' slot diisi dengan menu hemat. Atur anggaran di tab Belanja agar isi otomatis menyesuaikan jatah per minggu.';
+    }
     save(); renderAfterMenu(true);
   });
   $('#copyPrev').addEventListener('click', () => {
+    if (filling) return;
     const prevK = ymd(addDays(parseYmd(wk), -7)), prev = peekWeek(prevK), msg = $('#menuMsg');
     msg.className = 'form-msg';
     if (weekIsEmpty(prev)) { msg.className = 'form-msg bad'; msg.textContent = 'Menu minggu ' + weekLabel(prevK) + ' masih kosong.'; return; }
@@ -578,6 +713,7 @@
     save(); renderAfterMenu(true);
   });
   $('#clearWeek').addEventListener('click', () => {
+    if (filling) return;
     const w = peekWeek(wk);
     if (weekIsEmpty(w)) { $('#menuMsg').textContent = 'Minggu ini sudah kosong.'; return; }
     if (!armed($('#clearWeek'), 'Ketuk lagi untuk mengosongkan')) return;
@@ -1201,6 +1337,7 @@
   });
   const curTab = () => $('.tabs').dataset.tab;
   function shiftWeek(n){
+    if (filling) return;
     writeNow();
     wk = ymd(addDays(parseYmd(wk), 7 * n));
     editingPrice = null; editingSisa = null; tripSel = 0;

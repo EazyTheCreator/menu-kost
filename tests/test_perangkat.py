@@ -68,6 +68,7 @@ async def flow_on(b, url, name, **device):
     await page.goto(url)
     await page.wait_for_timeout(300)
     await page.tap("#autoFill")
+    await page.wait_for_selector("#autoFill:not([disabled])")
     check("isi otomatis lewat ketukan", await page.locator(".slot.filled").count() == 14)
     await page.tap('.slot[data-d="2"][data-w="siang"]')
     await page.wait_for_timeout(300)
@@ -109,6 +110,7 @@ async def pwa_offline(b, url):
     errs = [e["errorId"] for e in inst.get("installabilityErrors", [])]
     check("Chrome menilai aplikasi dapat dipasang", not errs, errs)
     await page.click("#autoFill")
+    await page.wait_for_selector("#autoFill:not([disabled])")
     await page.wait_for_timeout(400)
     cached = await page.evaluate("caches.open('menu-kost-v1').then(c => c.keys()).then(k => k.map(r => new URL(r.url).pathname))")
     check("berkas inti tersimpan di cache", all(any(p.endswith(f) for p in cached) for f in ["/index.html", "/app.js", "/data.js", "/styles.css"]), cached)
